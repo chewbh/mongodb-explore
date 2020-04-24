@@ -1,0 +1,58 @@
+# my global config
+global:
+  # scrape_timeout is set to the global default (10s).
+  scrape_interval: 15s # By default, scrape targets every 15 seconds.
+  evaluation_interval: 15s # By default, scrape targets every 15 seconds.
+
+# A scrape configuration
+scrape_configs:
+  # - job_name: 'prometheus'
+  #   scrape_interval: 10s
+  #   static_configs:
+  #        - targets: ['localhost:9090']
+
+  - job_name: "shard01"
+    # Override the global default and scrape targets from this job every 5 seconds.
+    scrape_interval: 5s
+    dns_sd_configs:
+      - names:
+          - "metrics-shard01"
+        type: "A"
+        port: 9216
+
+  - job_name: "shard02"
+    # Override the global default and scrape targets from this job every 5 seconds.
+    scrape_interval: 5s
+    dns_sd_configs:
+      - names:
+          - "metrics-shard02"
+        type: "A"
+        port: 9216
+
+  - job_name: "shard03"
+    # Override the global default and scrape targets from this job every 5 seconds.
+    scrape_interval: 5s
+    dns_sd_configs:
+      - names:
+          - "metrics-shard03"
+        type: "A"
+        port: 9216
+
+  - job_name: "configsvr"
+    # Override the global default and scrape targets from this job every 5 seconds.
+    scrape_interval: 5s
+    dns_sd_configs:
+      - names:
+          - "metrics-configsvr"
+        type: "A"
+        port: 9216
+
+  - job_name: "mongos"
+    # Override the global default and scrape targets from this job every 5 seconds.
+    scrape_interval: 5s
+    dns_sd_configs:
+      - names:
+          - "metrics-mongos01"
+          - "metrics-mongos02"
+        type: "A"
+        port: 9216

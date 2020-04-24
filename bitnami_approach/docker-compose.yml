@@ -1,0 +1,334 @@
+version: "2.0"
+
+# before running this, ensure OS tuning is already done
+
+# this is a sharded mongodb cluster setup in a single node
+# see .env for configured parameters (e.g. MONGODB_VERSION)
+# For production, each service should be in their own docker-compose file
+
+services:
+  # mongos instances
+
+  mongos-01:
+    container_name: mongos-01
+    image: bitnami/mongodb-sharded:${MONGODB_VERSION}
+    environment:
+      - MONGODB_ADVERTISED_HOSTNAME=mongos-01
+      - MONGODB_SHARDING_MODE=mongos
+      - MONGODB_CFG_PRIMARY_HOST=mongo-cfgsvr-01
+      - MONGODB_CFG_REPLICA_SET_NAME=configReplSet
+      - MONGODB_REPLICA_SET_KEY=${AUTH_SCRAM_KEYFILE_VALUE}
+      - MONGODB_ROOT_PASSWORD=${ROOT_PASSWORD}
+      - MONGODB_EXTRA_FLAGS=${MONGODB_EXTRA_ARGS}
+    ports:
+      - "27017:27017"
+
+  mongos-02:
+    container_name: mongos-02
+    image: bitnami/mongodb-sharded:${MONGODB_VERSION}
+    environment:
+      - MONGODB_ADVERTISED_HOSTNAME=mongos-01
+      - MONGODB_SHARDING_MODE=mongos
+      - MONGODB_CFG_PRIMARY_HOST=mongo-cfgsvr-01
+      - MONGODB_CFG_REPLICA_SET_NAME=configReplSet
+      - MONGODB_REPLICA_SET_KEY=${AUTH_SCRAM_KEYFILE_VALUE}
+      - MONGODB_ROOT_PASSWORD=${ROOT_PASSWORD}
+      - MONGODB_EXTRA_FLAGS=${MONGODB_EXTRA_ARGS}
+
+  # shards and their replica set
+
+  mongodb-shard01-01:
+    container_name: mongodb-shard01-01
+    image: bitnami/mongodb-sharded:${MONGODB_VERSION}
+    environment:
+      - MONGODB_ADVERTISED_HOSTNAME=mongodb-shard01-01
+      - MONGODB_SHARDING_MODE=shardsvr
+      - MONGODB_MONGOS_HOST=mongos-01
+      - MONGODB_ROOT_PASSWORD=${ROOT_PASSWORD}
+      - MONGODB_REPLICA_SET_MODE=primary
+      - MONGODB_REPLICA_SET_KEY=${AUTH_SCRAM_KEYFILE_VALUE}
+      - MONGODB_REPLICA_SET_NAME=app01RS
+      - MONGODB_EXTRA_FLAGS=${MONGODB_EXTRA_ARGS}
+    volumes:
+      - "shard1_data_1:/bitnami"
+  #    ulimits:               # ulimit should be set for each container but commented here as chromebook disallow changing rlimit directly
+  #      nproc: 64000
+  #      nofile:
+  #        soft: 64000
+  #        hard: 64000
+
+  mongodb-shard01-02:
+    container_name: mongodb-shard01-02
+    image: bitnami/mongodb-sharded:${MONGODB_VERSION}
+    environment:
+      - MONGODB_ADVERTISED_HOSTNAME=mongodb-shard01-02
+      - MONGODB_SHARDING_MODE=shardsvr
+      - MONGODB_PRIMARY_HOST=mongodb-shard01-01 # note that different from primary (not mongos_host)
+      - MONGODB_PRIMARY_ROOT_PASSWORD=${ROOT_PASSWORD} # note that different from primary
+      - MONGODB_REPLICA_SET_MODE=secondary
+      - MONGODB_REPLICA_SET_KEY=${AUTH_SCRAM_KEYFILE_VALUE}
+      - MONGODB_REPLICA_SET_NAME=app01RS
+      - MONGODB_EXTRA_FLAGS=${MONGODB_EXTRA_ARGS}
+    volumes:
+      - "shard1_data_2:/bitnami"
+    depends_on:
+      - mongodb-shard01-01
+
+  mongodb-shard01-arb-01:
+    container_name: mongodb-shard01-arb-01
+    image: bitnami/mongodb-sharded:${MONGODB_VERSION}
+    environment:
+      - MONGODB_ADVERTISED_HOSTNAME=mongodb-shard01-arb-01
+      - MONGODB_SHARDING_MODE=shardsvr
+      - MONGODB_PRIMARY_HOST=mongodb-shard01-01 # note that different from primary (not mongos_host)
+      - MONGODB_PRIMARY_ROOT_PASSWORD=${ROOT_PASSWORD} # note that different from primary
+      - MONGODB_REPLICA_SET_MODE=arbiter
+      - MONGODB_REPLICA_SET_KEY=${AUTH_SCRAM_KEYFILE_VALUE}
+      - MONGODB_REPLICA_SET_NAME=app01RS
+      - MONGODB_EXTRA_FLAGS=${MONGODB_EXTRA_ARGS}
+    depends_on:
+      - mongodb-shard01-01
+
+  mongodb-shard02-01:
+    container_name: mongodb-shard02-01
+    image: bitnami/mongodb-sharded:${MONGODB_VERSION}
+    environment:
+      - MONGODB_ADVERTISED_HOSTNAME=mongodb-shard02-01
+      - MONGODB_SHARDING_MODE=shardsvr
+      - MONGODB_MONGOS_HOST=mongos-01
+      - MONGODB_ROOT_PASSWORD=${ROOT_PASSWORD}
+      - MONGODB_REPLICA_SET_MODE=primary
+      - MONGODB_REPLICA_SET_KEY=${AUTH_SCRAM_KEYFILE_VALUE}
+      - MONGODB_REPLICA_SET_NAME=app02RS
+      - MONGODB_EXTRA_FLAGS=${MONGODB_EXTRA_ARGS}
+    volumes:
+      - "shard2_data_1:/bitnami"
+
+  mongodb-shard02-02:
+    container_name: mongodb-shard02-02
+    image: bitnami/mongodb-sharded:${MONGODB_VERSION}
+    environment:
+      - MONGODB_ADVERTISED_HOSTNAME=mongodb-shard02-02
+      - MONGODB_SHARDING_MODE=shardsvr
+      - MONGODB_PRIMARY_HOST=mongodb-shard02-01 # note that different from primary (not mongos_host)
+      - MONGODB_PRIMARY_ROOT_PASSWORD=${ROOT_PASSWORD} # note that different from primary
+      - MONGODB_REPLICA_SET_MODE=secondary
+      - MONGODB_REPLICA_SET_KEY=${AUTH_SCRAM_KEYFILE_VALUE}
+      - MONGODB_REPLICA_SET_NAME=app02RS
+      - MONGODB_EXTRA_FLAGS=${MONGODB_EXTRA_ARGS}
+    volumes:
+      - "shard2_data_2:/bitnami"
+    depends_on:
+      - mongodb-shard02-01
+
+  mongodb-shard02-arb-01:
+    container_name: mongodb-shard02-arb-01
+    image: bitnami/mongodb-sharded:${MONGODB_VERSION}
+    environment:
+      - MONGODB_ADVERTISED_HOSTNAME=mongodb-shard02-arb-01
+      - MONGODB_SHARDING_MODE=shardsvr
+      - MONGODB_PRIMARY_HOST=mongodb-shard02-01 # note that different from primary (not mongos_host)
+      - MONGODB_PRIMARY_ROOT_PASSWORD=${ROOT_PASSWORD} # note that different from primary
+      - MONGODB_REPLICA_SET_MODE=arbiter
+      - MONGODB_REPLICA_SET_KEY=${AUTH_SCRAM_KEYFILE_VALUE}
+      - MONGODB_REPLICA_SET_NAME=app02RS
+      - MONGODB_EXTRA_FLAGS=${MONGODB_EXTRA_ARGS}
+    depends_on:
+      - mongodb-shard02-01
+
+  mongodb-shard03-01:
+    container_name: mongodb-shard03-01
+    image: bitnami/mongodb-sharded:${MONGODB_VERSION}
+    environment:
+      - MONGODB_ADVERTISED_HOSTNAME=mongodb-shard03-01
+      - MONGODB_SHARDING_MODE=shardsvr
+      - MONGODB_MONGOS_HOST=mongos-01
+      - MONGODB_ROOT_PASSWORD=${ROOT_PASSWORD}
+      - MONGODB_REPLICA_SET_MODE=primary
+      - MONGODB_REPLICA_SET_KEY=${AUTH_SCRAM_KEYFILE_VALUE}
+      - MONGODB_REPLICA_SET_NAME=app03RS
+      - MONGODB_EXTRA_FLAGS=${MONGODB_EXTRA_ARGS}
+    volumes:
+      - "shard3_data_1:/bitnami"
+
+  mongodb-shard03-02:
+    container_name: mongodb-shard03-02
+    image: bitnami/mongodb-sharded:${MONGODB_VERSION}
+    environment:
+      - MONGODB_ADVERTISED_HOSTNAME=mongodb-shard03-02
+      - MONGODB_SHARDING_MODE=shardsvr
+      - MONGODB_PRIMARY_HOST=mongodb-shard03-01 # note that different from primary (not mongos_host)
+      - MONGODB_PRIMARY_ROOT_PASSWORD=${ROOT_PASSWORD} # note that different from primary
+      - MONGODB_REPLICA_SET_MODE=secondary
+      - MONGODB_REPLICA_SET_KEY=${AUTH_SCRAM_KEYFILE_VALUE}
+      - MONGODB_REPLICA_SET_NAME=app03RS
+      - MONGODB_EXTRA_FLAGS=${MONGODB_EXTRA_ARGS}
+    volumes:
+      - "shard3_data_2:/bitnami"
+    depends_on:
+      - mongodb-shard03-01
+
+  mongodb-shard03-arb-01:
+    container_name: mongodb-shard03-arb-01
+    image: bitnami/mongodb-sharded:${MONGODB_VERSION}
+    environment:
+      - MONGODB_ADVERTISED_HOSTNAME=mongodb-shard03-arb-01
+      - MONGODB_SHARDING_MODE=shardsvr
+      - MONGODB_PRIMARY_HOST=mongodb-shard03-01 # note that different from primary (not mongos_host)
+      - MONGODB_PRIMARY_ROOT_PASSWORD=${ROOT_PASSWORD} # note that different from primary
+      - MONGODB_REPLICA_SET_MODE=arbiter
+      - MONGODB_REPLICA_SET_KEY=${AUTH_SCRAM_KEYFILE_VALUE}
+      - MONGODB_REPLICA_SET_NAME=app03RS
+      - MONGODB_EXTRA_FLAGS=${MONGODB_EXTRA_ARGS}
+    depends_on:
+      - mongodb-shard03-01
+
+  # config servers
+
+  mongo-cfgsvr-01:
+    container_name: mongo-cfgsvr-01
+    image: bitnami/mongodb-sharded:${MONGODB_VERSION}
+    environment:
+      - MONGODB_ADVERTISED_HOSTNAME=mongo-cfgsvr-01
+      - MONGODB_SHARDING_MODE=configsvr
+      - MONGODB_ROOT_PASSWORD=${ROOT_PASSWORD}
+      - MONGODB_REPLICA_SET_MODE=primary
+      - MONGODB_REPLICA_SET_KEY=${AUTH_SCRAM_KEYFILE_VALUE}
+      - MONGODB_REPLICA_SET_NAME=configReplSet
+      - MONGODB_EXTRA_FLAGS=${MONGODB_EXTRA_ARGS}
+    volumes:
+      - "cfg_data_1:/bitnami"
+
+  mongo-cfgsvr-02:
+    container_name: mongo-cfgsvr-02
+    image: bitnami/mongodb-sharded:${MONGODB_VERSION}
+    environment:
+      - MONGODB_ADVERTISED_HOSTNAME=mongo-cfgsvr-02
+      - MONGODB_SHARDING_MODE=configsvr
+      - MONGODB_PRIMARY_HOST=mongo-cfgsvr-01
+      - MONGODB_PRIMARY_ROOT_PASSWORD=${ROOT_PASSWORD}
+      - MONGODB_REPLICA_SET_MODE=secondary
+      - MONGODB_REPLICA_SET_KEY=${AUTH_SCRAM_KEYFILE_VALUE}
+      - MONGODB_REPLICA_SET_NAME=configReplSet
+      - MONGODB_EXTRA_FLAGS=${MONGODB_EXTRA_ARGS}
+    volumes:
+      - "cfg_data_2:/bitnami"
+    depends_on:
+      - mongo-cfgsvr-01
+
+  mongo-cfgsvr-03:
+    container_name: mongo-cfgsvr-03
+    image: bitnami/mongodb-sharded:${MONGODB_VERSION}
+    environment:
+      - MONGODB_ADVERTISED_HOSTNAME=mongo-cfgsvr-arb-01
+      - MONGODB_SHARDING_MODE=configsvr
+      - MONGODB_PRIMARY_HOST=mongo-cfgsvr-01
+      - MONGODB_PRIMARY_ROOT_PASSWORD=${ROOT_PASSWORD}
+      - MONGODB_REPLICA_SET_MODE=secondary
+      - MONGODB_REPLICA_SET_KEY=${AUTH_SCRAM_KEYFILE_VALUE}
+      - MONGODB_REPLICA_SET_NAME=configReplSet
+      - MONGODB_EXTRA_FLAGS=${MONGODB_EXTRA_ARGS}
+    depends_on:
+      - mongo-cfgsvr-01
+
+  # prometheus exporter for mongodb (one per shard / replica set)
+
+  # port used is 9216
+  metrics-shard01:
+    container_name: metrics-shard01
+    image: bitnami/mongodb-exporter:0.10.0
+    command:
+      - --collect.database
+      - --collect.collection
+    environment:
+      # connection string cannot have hidden member (e.g. arbiter)
+      - MONGODB_URI=mongodb://${DB_MONITOR_USER}:${DB_MONITOR_PASSWORD}@mongodb-shard01-01:27017,mongodb-shard01-02:27017/?authSource=admin&replicaSet=app01RS
+
+  metrics-shard02:
+    container_name: metrics-shard02
+    image: bitnami/mongodb-exporter:0.10.0
+    command:
+      - --collect.database
+      - --collect.collection
+    environment:
+      - MONGODB_URI=mongodb://${DB_MONITOR_USER}:${DB_MONITOR_PASSWORD}@mongodb-shard02-01:27017,mongodb-shard02-02:27017/?authSource=admin&replicaSet=app02RS
+
+  metrics-shard03:
+    container_name: metrics-shard03
+    image: bitnami/mongodb-exporter:0.10.0
+    command:
+      - --collect.database
+      - --collect.collection
+    environment:
+      - MONGODB_URI=mongodb://${DB_MONITOR_USER}:${DB_MONITOR_PASSWORD}@mongodb-shard03-01:27017,mongodb-shard03-02:27017/?authSource=admin&replicaSet=app03RS
+
+  metrics-configsvr:
+    container_name: metrics-configsvr
+    image: bitnami/mongodb-exporter:0.10.0
+    command:
+      - --collect.database
+      - --collect.collection
+    environment:
+      - MONGODB_URI=mongodb://${DB_MONITOR_USER}:${DB_MONITOR_PASSWORD}@mongo-cfgsvr-01:27017,mongo-cfgsvr-02:27017,mongo-cfgsvr-03:27017/?authSource=admin&replicaSet=configReplSet
+
+  metrics-mongos01:
+    container_name: metrics-mongos01
+    image: bitnami/mongodb-exporter:0.10.0
+    command:
+      - --collect.database
+      - --collect.collection
+    environment:
+      - MONGODB_URI=mongodb://${DB_MONITOR_USER}:${DB_MONITOR_PASSWORD}@mongos-01:27017/?authSource=admin
+
+  metrics-mongos02:
+    container_name: metrics-mongos02
+    image: bitnami/mongodb-exporter:0.10.0
+    command:
+      - --collect.database
+      - --collect.collection
+    environment:
+      - MONGODB_URI=mongodb://${DB_MONITOR_USER}:${DB_MONITOR_PASSWORD}@mongos-02:27017/?authSource=admin
+
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus:latest
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+    ports:
+      - 9090:9090
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prom_data:/prometheus
+
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:latest
+    depends_on:
+      - prometheus
+    ports:
+      - 3000:3000
+
+volumes:
+  shard1_data_1:
+    driver: local
+  shard1_data_2:
+    driver: local
+  shard2_data_1:
+    driver: local
+  shard2_data_2:
+    driver: local
+  shard3_data_1:
+    driver: local
+  shard3_data_2:
+    driver: local
+  cfg_data_1:
+    driver: local
+  cfg_data_2:
+    driver: local
+  cfg_data_3:
+    driver: local
+  prom_data:
+    driver: local

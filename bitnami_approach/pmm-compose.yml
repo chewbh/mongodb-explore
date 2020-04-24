@@ -1,0 +1,37 @@
+version: "2.0"
+
+services:
+  # pmm-data:
+  #   image: percona/pmm-server
+  #   container_name: pmm-data
+  #   volumes:
+  #     - /opt/prometheus/data
+  #     - /opt/consul-data
+  #     - /var/lib/mysql
+  #     - /var/lib/grafana
+  #   entrypoint: /bin/true
+
+  pmm-server:
+    container_name: pmm-server
+    image: percona/pmm-server:2.5.0
+    ports:
+      - "3001:80"
+    volumes:
+      - "pmm_prometheus_data:/opt/prometheus/data"
+      - "pmm_consul_data:/opt/consul-data"
+      - "pmm_grafana_data:/var/lib/grafana"
+    #      - /root/docker_shared_volumes/ssl:/srv/nginx
+    environment:
+      - METRICS_RETENTION=720h
+      - METRICS_MEMORY=262144
+      - METRICS_RESOLUTION=1s
+      - QUERIES_RETENTION=8
+      - ORCHESTRATOR_USER=orc_client_user
+      - ORCHESTRATOR_PASSWORD=orc_client_password
+      - SERVER_USER=admin
+      - SERVER_PASSWORD=
+
+volumes:
+  pmm_prometheus_data: {}
+  pmm_consul_data: {}
+  pmm_grafana_data: {}
