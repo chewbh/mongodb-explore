@@ -13,5 +13,9 @@ Docker Image to Explore
 - bitnami mongodb
 - percona mongodb
 
-- Migration Approach
+Monitoring
+- PMM Server (can manually add from web UI or via pmm-client)
+- custom pmm-client to auto add mongodb exporter and QAN integration
+
+Migration Approach
 

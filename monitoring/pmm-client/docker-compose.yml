@@ -1,0 +1,85 @@
+version: "2.0"
+
+services:
+  # should be 1 container per mongod instance
+  pmm-client:
+    container_name: pmm-client
+    image: boonlogic/pmm-client:2.5.0
+    # image: perconalab/pmm-client:2.5.0
+    environment:
+      - PMM_AGENT_CONFIG_FILE=/usr/local/percona/pmm2/config/pmm-agent.yaml
+      - PMM_AGENT_SETUP=1
+      - PMM_AGENT_SETUP_NODE_TYPE=container
+      - PMM_AGENT_SETUP_NODE_NAME=mongo-cfgsvr-01
+      - PMM_AGENT_SETUP_CONTAINER_NAME=mongo-cfgsvr-01
+      - PMM_AGENT_SETUP_FORCE=1
+      - PMM_AGENT_SERVER_ADDRESS=100.115.92.195:443
+      - PMM_AGENT_SERVER_USERNAME=admin
+      - PMM_AGENT_SERVER_PASSWORD=admin
+      - PMM_AGENT_SERVER_INSECURE_TLS=1
+      ### custom variable for setup (extended for automatically run post setup action to add service)
+      - DB_TYPE=mongodb
+      - DB_PASSWORD=password
+      - DB_ADDRESS=mongo-cfgsvr-01:27017
+      - SERVICE_NAME=mongo-cfgsvr-01
+      - DB_CLUSTER_NAME=app
+
+# need to run post setup service command (can't be done in docker-compose, unlike kubernetes)
+# pmm-admin add mongodb --username root --password password --cluster mongo1 mongodb-shard01-01 mongodb-shard01-01:27017
+################################################
+# pmm-admin add \
+# ${DB_TYPE:-'mongodb'} \
+# --username ${DB_USERNAME:-'root'} $PASSWORD \
+# $CLUSTER_NAME \
+# $DB_ARGS \
+# $SERVICE_NAME \
+# ${DB_ADDRESS:-'localhost:27017'}
+###############################################
+# - DB_TYPE=mongodb
+# - DB_PASSWORD=password
+# - DB_ADDRESS=mongodb-shard01-01:27017
+# - SERVICE_NAME=mongodb-shard01-01
+# - DB_CLUSTER_NAME=app
+# - PMM_AGENT_DEBUG=1
+#- DB_ARGS= --tls --tls-skip-verify --replication-set xx --environment xx
+
+#
+# # MongoDB Exporter
+# # prometheus exporter for mongodb (one per shard / replica set)
+# # port used is 9216
+# metrics-shard01:
+#   container_name: metrics-shard01
+#   image: bitnami/mongodb-exporter:0.10.0
+#   command:
+#     - --collect.database
+#     - --collect.collection
+#   environment:
+#     # connection string cannot have hidden member (e.g. arbiter)
+#     - MONGODB_URI=mongodb://${DB_MONITOR_USER}:${DB_MONITOR_PASSWORD}@mongodb-shard01-01:27017,mongodb-shard01-02:27017/?authSource=admin&replicaSet=app01RS
+#
+# prometheus:
+#   container_name: prometheus
+#   image: prom/prometheus:latest
+#   command:
+#     - "--config.file=/etc/prometheus/prometheus.yml"
+#     - "--storage.tsdb.path=/prometheus"
+#     - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+#     - "--web.console.templates=/usr/share/prometheus/consoles"
+#   ports:
+#     - 9090:9090
+#   volumes:
+#     - ./prometheus.yml:/etc/prometheus/prometheus.yml
+#     - prom_data:/prometheus
+#
+# grafana:
+#   container_name: grafana
+#   image: grafana/grafana:latest
+#   depends_on:
+#     - prometheus
+#   ports:
+#     - 3000:3000
+
+networks:
+  default:
+    external:
+      name: bitnami_approach_mongo
