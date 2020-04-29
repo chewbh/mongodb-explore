@@ -1,0 +1,224 @@
+
+- name: configure os users
+
+- name: register to RHEL satellite
+  script: rhel_satellite_reg.sh
+  become: yes
+  tags: 
+    - os
+
+- name: add EPEL repo (offline)
+  yum_repository:
+    name: epel
+    description: additional package from Fedora EPEL channel
+    baseurl: "{{ yum.epel.repo_url }}"
+    file: epel
+    gpgcheck: no
+    sslverify: no
+    enabled: yes
+  when: not is_online
+  tags:
+    - os
+
+- name: add EPEL repo (online)
+  yum:
+    name: epel-release
+    state: present
+  become: yes
+  when: is_online
+  tags:
+    - os
+
+- name: install os utilities
+
+- name: use alternate TMPDIR in user home directory as /tmp should be noexec
+  template:
+    src: tmpdir.sh.j2
+    dest: /etc/profile.d/tmpdir.sh
+    mode: "755"
+  become: yes
+
+- name: disable selinux?
+  selinux: 
+    state: disabled
+  become: yes
+
+- name: set soft ulimit for open file descriptors
+  pam_limits:
+    domain: "*"
+    limit_type: soft
+    limit_item: nofile
+    value: 65536
+  become: yes
+
+- name: set hard ulimit for open file descriptors
+  pam_limits:
+    domain: "*"
+    limit_type: hard
+    limit_item: nofile
+    value: 65536
+  become: yes
+
+- name: set soft ulimit for user processes
+  pam_limits:
+    domain: "*"
+    limit_type: soft
+    limit_item: nproc
+    value: 65536
+  become: yes
+
+- name: set hard ulimit for user processes
+  pam_limits: 
+    domain: "*"
+    limit_type: hard
+    limit_item: nproc
+    value: 65536
+  become: yes
+
+
+
+- include_tasks: "{{ is_online | ternary('online', 'offline') }}_docker_repo.yaml"
+  tags:
+    - docker
+
+- name: stop docker if exist
+  service:
+    name: docker
+    state: stopped
+    enabled: false
+  become: yes
+  ignore_errors: yes
+  tags:
+    - docker
+    - reinstall
+
+- name: uninstall existing or old docker versions
+  yum: 
+    name: "{{ item }}"
+    state: absent
+  with_items:
+    - docker
+    - docker-client
+    - docker-client-latest
+    - docker-common
+    - docker-latest
+    - docker-latest-logrotate
+    - docker-selinux
+    - docker-engine
+    - docker-engine-selinux
+  become: yes
+  tags:
+    - docker
+    - reinstall
+    - never
+
+- name: remove existing docker directory
+  file:
+    path: /var/lib/docker
+    state: absent
+  become: yes
+  tags:
+    - docker
+    - reinstall
+    - never
+
+- name: install docker dependencies
+  yum:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - yum-utils
+    - device-mapper-persistent-data
+    - lvm2
+  become: yes
+  tags:
+    - docker
+
+- name: disable obsoletes option to workaround installation of older docker versions
+  ini_file:
+    path: /etc/yum.conf
+    section: main
+    option: obsoletes
+    value: 0
+  become: yes
+  tags:
+    - docker
+
+- name: install docker (CE)
+  yum:
+    name: "docker-ce-{{ docker_version }}"
+    state: present
+  become: yes
+  notify: restart docker
+  tags:
+    - docker
+
+- name: configure firewalld for docker
+  firewalld:
+    zone: trusted
+    interface: docker0
+    permanent: yes
+    state: enabled
+  become: yes
+  notify: restart firewall
+  tags: 
+    - docker
+
+- name: ensure /etc/docker exists
+  file:
+    path: /etc/docker
+    state: directory
+  become: yes
+  tags:
+    - docker
+
+- name: configure docker
+  template:
+    src: daemon.json.j2
+    dest: /etc/docker/daemon.json
+    backup: no
+  become: yes
+  notify: restart docker
+  tags:
+    - docker
+
+- name: get user running ansible
+  local_action: command whoami
+  register: remote_user
+  changed_when: no
+  become: no
+  tags:
+    - docker
+
+- name: determine docker administrator (app user)
+  set_fact:
+    docker_user: "{{ ansible_user | default(remote_user.stdout) }}"
+  changed_when: no
+  tags:
+    - docker
+
+- name: ensure docker group exists
+  group:
+    name: docker
+    state: present
+  tags:
+    - docker
+
+- name: add administrator (app user) to docker group
+  user:
+    name: "{{ docker_user }}"
+    groups: docker
+    append: yes
+  become: yes
+  tags:
+    docker
+
+- import_tasks: docker_compose.yml
+  tags:
+    docker
+
+- import_tasks: docker_tls.yml
+  tags:
+    docker
+
+
