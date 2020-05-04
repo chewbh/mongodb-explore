@@ -1,0 +1,34 @@
+version: "2.0"
+
+# before running this, ensure OS tuning is already done
+
+# this is a sharded mongodb cluster setup in a single node
+# see .env for configured parameters (e.g. MONGODB_VERSION)
+# For production, each service should be in their own docker-compose file
+
+services:
+  # shards and their replica set
+
+  mongodb-shard03-04:
+    container_name: mongodb-shard03-04
+    image: bitnami/mongodb-sharded:${MONGODB_VERSION}
+    environment:
+      - MONGODB_ADVERTISED_HOSTNAME=mongodb-shard03-04
+      - MONGODB_SHARDING_MODE=shardsvr
+      - MONGODB_PRIMARY_HOST=mongodb-shard03-01 # note that different from primary (not mongos_host)
+      - MONGODB_PRIMARY_ROOT_PASSWORD=${ROOT_PASSWORD} # note that different from primary
+      - MONGODB_REPLICA_SET_MODE=secondary
+      - MONGODB_REPLICA_SET_KEY=${AUTH_SCRAM_KEYFILE_VALUE}
+      - MONGODB_REPLICA_SET_NAME=app03RS
+      - MONGODB_EXTRA_FLAGS=${MONGODB_EXTRA_ARGS}
+    volumes:
+      - "shard3_data_4:/bitnami"
+
+networks:
+  default:
+    external:
+      name: bitnami_approach_mongo
+
+volumes:
+  shard3_data_4:
+    driver: local

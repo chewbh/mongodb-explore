@@ -1,0 +1,107 @@
+################################################################
+# foundational OS level setup for a typical node
+# - install essential OS level tooling
+# - install docker and docker-compose
+# - basic os tuning and selinux configuration
+#
+# - assume ntp or chrony is already properly configured
+################################################################
+
+- name: "generate etc/hosts file for mongodb cluster"
+  lineinfile:
+    dest: /etc/hosts
+    regexp: ".*{{ item }}$"
+    line: "{{ hostvars[item].ansible_default_ipv4.address }} {{item}}"
+    state: present
+  when: hostvars[item].ansible_default_ipv4.address is defined and use_hosts_file
+  with_items: "{{ groups['all'] }}"
+  become: yes
+
+- name: register to RHEL satellite
+  script: rhel_satellite_reg.sh
+  become: yes
+  when: not is_online
+  tags:
+    - os
+    - os_pkgs_only
+
+- name: add EPEL repo (offline)
+  yum_repository:
+    name: epel
+    description: additional package from Fedora EPEL channel
+    baseurl: "{{ os_repos.offline.epel.url }}"
+    file: epel
+    gpgcheck: no
+    sslverify: no
+    enabled: yes
+  become: yes
+  when: not is_online
+  tags:
+    - os
+    - os_pkgs_only
+
+- name: add EPEL repo (online)
+  yum:
+    name: epel-release
+    state: present
+  become: yes
+  when: is_online
+  tags:
+    - os
+    - os_pkgs_only
+
+- name: install system updates if any
+  yum:
+    name: "*"
+    state: latest
+    update_cache: yes
+  become: yes
+  tags:
+    - os_pkgs_upgrade
+
+- name: install essential and useful os tools
+  package:
+    name: "{{ item }}"
+    state: present
+    update_cache: yes
+  with_items:
+    - firewalld #firewalld not installed on centos 7 by default
+    - python-firewall
+    - bind-utils # on debian based machine, this is dnsutils
+    - unzip
+    - wget
+    - curl
+    - sshpass
+    - vim
+    - zsh
+    - python-pip
+    - python-docker
+    - python3
+    - python3-pip
+    - python36-docker # usually, this is python3-docker
+    - tmux
+    - htop
+    - tree
+    - jq
+  become: yes
+  tags:
+    - os_pkgs_only
+
+- name: tune ulimit for a typical node
+  import_tasks: ulimit.yml
+
+- name: use alternate TMPDIR in user home directory as /tmp should be noexec
+  template:
+    src: tmpdir.sh.j2
+    dest: "/home/{{ ansible_user_id }}/.bash_profile"
+    mode: "644"
+  become: no
+
+- name: disable selinux
+  selinux:
+    state: disabled
+  become: yes
+
+- import_tasks: docker.yml
+  tags:
+    - docker

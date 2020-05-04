@@ -1,0 +1,34 @@
+is_online: yes
+use_hosts_file: yes
+
+os_repos:
+  offline:
+    epel:
+      url: http://download.fedoraproject.org/pub/epel
+    docker:
+      url: https://download.docker.com/linux/centos/docker-ce.repo
+
+files.server.repo.url: http://xxxx.com/files
+
+docker_version: 19.03.8
+docker_containerd_version: 1.2.13
+docker_containerd_minor_version: 1
+
+pypi_repository_url: https://pypi.org/simple
+docker_compose_version: 1.25.4
+docker_compose_install_url: "https://github.com/docker/compose/releases/download/{{ docker_compose_version }}/docker-compose-{{ ansible_system }}-{{ ansible_architecture }}"
+
+docker_registry_host: docker.io
+
+docker_container_force_recreate: yes
+docker_container_restart: no
+docker_container_stopped: no
+
+# version of the bitnami mongo's docker tag to use
+mongo_version: 4.2.5
+mongo_cfgsvr_replica_set_name: configReplSet
+mongo_extra_args: "--setParameter internalQueryExecMaxBlockingSortBytes=134217728"
+mongo_data_volume_path: "/data"
+
+vault_mongo_root_password: "{{ mongo_root_password }}"
+vault_mongo_auth_scram_key: "{{ mongo_auth_scram_key }}"

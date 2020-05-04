@@ -1,0 +1,29 @@
+---
+shards: "2"
+mongodbRootPassword: password
+replicaSetKey: SmfhsAEFwE
+mongos:
+  replicas: "2"
+  mongodbExtraFlags: --setParameter internalQueryExecMaxBlockingSortBytes=134217728
+configsvr:
+  replicas: "1"
+  persistence:
+    enabled: true
+    storageClass: "standard"
+  mongodbExtraFlags: --setParameter internalQueryExecMaxBlockingSortBytes=134217728
+shardsvr:
+  dataNode:
+    replicas: "1"
+    mongodbExtraFlags: --setParameter internalQueryExecMaxBlockingSortBytes=134217728
+  arbiter:
+    replicas: "1"
+    mongodbExtraFlags: --setParameter internalQueryExecMaxBlockingSortBytes=134217728
+  persistence:
+    enabled: true
+    storageClass: "standard"
+metrics:
+  enabled: "true"
+image:
+  registry: "docker.io"
+  repository: "bitnami/mongodb-sharded"
+  tag: "4.2.6"

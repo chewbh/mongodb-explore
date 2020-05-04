@@ -1,0 +1,182 @@
+- name: install pre-req for docker
+  yum:
+    name: "{{ item }}"
+    state: present
+    update_cache: yes
+  with_items:
+    - yum-utils
+    - device-mapper-persistent-data
+    - lvm2
+  become: yes
+
+- name: add docker repository (offline)
+  yum_repository:
+    name: offline-docker-ce-stable
+    description: Docker CE packages from official repo made offline
+    baseurl: "{{ os_repos.offline.docker.url }}"
+    file: offline-docker-ce
+    gpgcheck: no
+    sslverify: no
+    enabled: yes
+  become: yes
+  when: not is_online
+
+- name: add docker repository (online)
+  get_url:
+    url: https://download.docker.com/linux/centos/docker-ce.repo
+    dest: /etc/yum.repos.d/docker-ce.repo
+  changed_when: no
+  become: yes
+
+- name: disable obsoletes option to workaround installation of older docker versions
+  ini_file:
+    path: /etc/yum.conf
+    section: main
+    option: obsoletes
+    value: "0"
+  become: yes
+
+- name: stop docker if exist
+  service:
+    name: docker
+    state: stopped
+    enabled: false
+  become: yes
+  ignore_errors: yes
+  tags:
+    - docker
+    - reinstall
+    - never
+
+- name: uninstall existing or old docker versions
+  yum:
+    name: "{{ item }}"
+    state: absent
+  with_items:
+    - docker
+    - docker-client
+    - docker-client-latest
+    - docker-common
+    - docker-latest
+    - docker-latest-logrotate
+    - docker-selinux
+    - docker-engine
+    - docker-engine-selinux
+  become: yes
+  tags:
+    - docker
+    - reinstall
+    - never
+
+- name: remove existing docker directory
+  file:
+    path: /var/lib/docker
+    state: absent
+  become: yes
+  tags:
+    - docker
+    - reinstall
+    - never
+
+- name: install docker-ce
+  yum:
+    name: "{{ item }}"
+    state: present
+    update_cache: yes
+  with_items:
+    - "containerd.io-{{ docker_containerd_version }}"
+    - "docker-ce-{{ docker_version }}"
+    - "docker-ce-cli-{{ docker_version }}"
+  notify: restart docker
+  become: yes
+
+- name: ensure firewalld is up
+  systemd:
+    name: firewalld
+    state: started
+  become: yes
+
+- name: configure firewalld for docker
+  firewalld:
+    zone: trusted
+    interface: docker0
+    permanent: yes
+    state: enabled
+  become: yes
+  notify: restart firewalld
+
+- name: creates docker service directory
+  file:
+    path: /etc/docker
+    state: directory
+  become: yes
+
+- name: copy default docker daemon configuration
+  template:
+    src: docker-daemon.json.j2
+    dest: /etc/docker/daemon.json
+    backup: no
+  become: yes
+  notify: restart docker
+
+- name: creates docker service directory
+  file:
+    path: /etc/systemd/system/docker.service.d
+    state: directory
+  become: yes
+
+- name: restart docker and reload daemon
+  systemd:
+    state: restarted
+    daemon_reload: yes
+    name: docker
+  become: yes
+
+- name: flush to force firewalld and docker to restart if needed
+  meta: flush_handlers
+
+- name: get user running ansible
+  local_action: command whoami
+  register: remote_user
+  changed_when: no
+  become: no
+  tags:
+    - docker
+
+- name: determine docker administrator (app user)
+  set_fact:
+    docker_user: "{{ ansible_user_id | default(remote_user.stdout) }}"
+  changed_when: no
+  tags:
+    - docker
+
+- name: ensure docker group exists
+  group:
+    name: docker
+    state: present
+  tags:
+    - docker
+
+- name: add administrator (app user) to docker group
+  user:
+    name: "{{ docker_user }}"
+    groups: [docker]
+    append: yes
+  become: yes
+
+# - name: install docker-compose from {{ docker_compose_version }}
+#   get_url:
+#     url: "{{ docker_compose_install_url }}"
+#     dest: "/usr/local/bin/docker-compose"
+#     validate_certs: no
+#     mode: "0755"
+#   become: yes
+
+- name: install docker-compose via python pip
+  pip:
+    name: "docker-compose=={{ docker_compose_version }}"
+    extra_args: "-i {{ pypi_repository_url }}"
+  become: yes
+
+- import_tasks: docker_tls.yml
+  when: not is_online

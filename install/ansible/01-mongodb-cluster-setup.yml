@@ -1,0 +1,13 @@
+# - hosts: all
+#   gather_facts: True
+#   gather_subset: [network, hardware]
+#   roles:
+# - standard-node
+# - mongo-prereq
+
+- hosts: config_servers
+  gather_facts: True
+  gather_subset: [network, hardware]
+  roles:
+    - mongo-prereq
+    - mongo-shard

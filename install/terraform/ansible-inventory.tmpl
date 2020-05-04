@@ -1,0 +1,47 @@
+
+[mongo_shard_1]
+%{ for server in mongo_shard_1.* ~}
+${server.name} ansible_host=${server.ipv4_address} %{ if server.arbiter_replica_set_name != "" } arbiter_replica_set_name=${server.arbiter_replica_set_name}%{ endif }
+%{ endfor ~}
+
+[mongo_shard_1:vars]
+replica_set_name=app01RS
+
+
+[mongo_shard_2]
+%{ for server in mongo_shard_2.* ~}
+${server.name} ansible_host=${server.ipv4_address} %{ if server.arbiter_replica_set_name != "" } arbiter_replica_set_name=${server.arbiter_replica_set_name}%{ endif }
+%{ endfor ~}
+
+[mongo_shard_2:vars]
+replica_set_name=app02RS
+
+
+[mongo_shards:children]
+mongo_shard_1
+mongo_shard_2
+
+[mongos]
+# mongos are also known as query routers
+%{ for server in mongos.* ~}
+${server.name} ansible_host=${server.ipv4_address}
+%{ endfor ~}
+
+[config_servers]
+%{ for server in config_servers.* ~}
+${server.name} ansible_host=${server.ipv4_address}
+%{ endfor ~}
+
+########################################################
+
+[mongodb_cluster:children]
+mongos
+config_servers
+mongo_shards
+
+
+[all:vars]
+ansible_python_interpreter=/usr/bin/python3
+ansible_connection=ssh
+ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+

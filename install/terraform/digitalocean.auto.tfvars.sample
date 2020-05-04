@@ -1,0 +1,11 @@
+# personal access token for the DigitalOcean API
+api_token           = ""
+
+# name or identifier of the ssh key to be put on digital ocean
+ssh_key_name        = ""
+
+# local filename of the ssh key
+ssh_key_file = "<user home directory>/.ssh/id_rsa"
+
+# sysadmin password
+sysadmin_password = ""

@@ -1,0 +1,26 @@
+- name: "create docker registry tls cert directory in {{ ansible_fqdn }}"
+  file:
+    dest: "/etc/docker/certs.d/{{ docker_registry_host }}"
+    state: directory
+  become: yes
+
+- name: "add tls certificate from docker registry"
+  shell: |
+    openssl s_client -showcerts -connect \
+    {{ docker_registry_host }}:443 </dev/null 2>dev/null | \
+    openssl x509 -outform PEM > /etc/docker/certs.d/{{ docker_registry_host }}/{{ docker_registry_host }}.crt
+  become: yes
+
+- name: place tls certificate into OS level cert store
+  copy:
+    src: "/etc/docker/certs.d/{{ docker_registry_host }}/{{ docker_Registry_host }}.crt"
+    dest: "/etc/pki/ca-trust/source/anchors/{{ docker_registry_host }}.crt"
+    remote_src: yes
+  become: yes
+
+- name: trust tls certificate at OS level
+  command: update-ca-trust
+  become: yes
+  changed_when: no
+
+

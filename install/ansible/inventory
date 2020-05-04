@@ -1,0 +1,44 @@
+
+[mongo_shard_1]
+mongo-shard-1-1 ansible_host=167.71.204.91 
+mongo-shard-1-2 ansible_host=167.71.204.79  arbiter_replica_set_name=app02RS 
+
+[mongo_shard_1:vars]
+replica_set_name=app01RS
+
+
+[mongo_shard_2]
+mongo-shard-2-1 ansible_host=178.128.111.228 
+mongo-shard-2-2 ansible_host=167.71.204.197  arbiter_replica_set_name=app01RS 
+
+[mongo_shard_2:vars]
+replica_set_name=app02RS
+
+
+[mongo_shards:children]
+mongo_shard_1
+mongo_shard_2
+
+[mongos]
+# mongos are also known as query routers
+mongos-1 ansible_host=68.183.231.106
+mongos-2 ansible_host=167.71.204.151
+
+[config_servers]
+cfgsvr-1 ansible_host=167.71.204.211
+cfgsvr-2 ansible_host=167.71.204.24
+cfgsvr-3 ansible_host=167.71.204.98
+
+########################################################
+
+[mongodb_cluster:children]
+mongos
+config_servers
+mongo_shards
+
+
+[all:vars]
+ansible_python_interpreter=/usr/bin/python3
+ansible_connection=ssh
+ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+

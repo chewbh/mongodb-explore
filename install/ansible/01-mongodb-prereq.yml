@@ -1,0 +1,5 @@
+ - hosts: all
+   gather_facts: True
+   gather_subset: [network, hardware]
+   roles:
+     - mongo-prereq

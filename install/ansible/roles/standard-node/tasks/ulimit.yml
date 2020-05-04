@@ -1,0 +1,31 @@
+- name: set soft ulimit for open file descriptors
+  pam_limits:
+    domain: "*"
+    limit_type: soft
+    limit_item: nofile
+    value: "65536"
+  become: yes
+
+- name: set hard ulimit for open file descriptors
+  pam_limits:
+    domain: "*"
+    limit_type: hard
+    limit_item: nofile
+    value: "65536"
+  become: yes
+
+- name: set soft ulimit for user processes
+  pam_limits:
+    domain: "*"
+    limit_type: soft
+    limit_item: nproc
+    value: "65536"
+  become: yes
+
+- name: set hard ulimit for user processes
+  pam_limits:
+    domain: "*"
+    limit_type: hard
+    limit_item: nproc
+    value: "65536"
+  become: yes

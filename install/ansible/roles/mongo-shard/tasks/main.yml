@@ -1,0 +1,87 @@
+- name: delete data directory
+  file:
+    path: "{{ mongo_data_volume_path }}"
+    state: absent
+    owner: "1001"
+    group: "{{ ansible_user_id }}"
+    mode: "0755"
+  become: yes
+
+- name: create data directory
+  file:
+    path: "{{ mongo_data_volume_path }}"
+    state: directory
+    owner: "1001"
+    group: "{{ ansible_user_id }}"
+    mode: "0755"
+  become: yes
+
+- name: (primary) config servers via docker-compose
+  docker_compose:
+    project_name: cfgsvr
+    pull: yes
+    recreate: "{{ docker_container_force_recreate | ternary('always', 'smart') }}"
+    restarted: "{{ docker_container_restart }}"
+    stopped: "{{ docker_container_stopped }}"
+    state: present
+    definition:
+      version: "2"
+      services:
+        config-server:
+          container_name: mongodb-cfgsvr
+          image: "{{ docker_registry_host }}/bitnami/mongodb-sharded:{{ mongo_version }}"
+          ports:
+            - 27017:27017
+          network_mode: host
+          environment:
+            - "MONGODB_ADVERTISED_HOSTNAME={{ inventory_hostname }}"
+            - "MONGODB_SHARDING_MODE=configsvr"
+            - "MONGODB_ROOT_PASSWORD={{ vault_mongo_root_password }}"
+            - "MONGODB_REPLICA_SET_MODE=primary"
+            - "MONGODB_REPLICA_SET_KEY={{ vault_mongo_auth_scram_key }}"
+            - "MONGODB_REPLICA_SET_NAME={{ mongo_cfgsvr_replica_set_name }}"
+            - "MONGODB_EXTRA_FLAGS={{ mongo_extra_args }}"
+            - "BITNAMI_DEBUG=true"
+          volumes:
+            - "{{ mongo_data_volume_path }}:/bitnami/mongodb/data"
+  when: inventory_hostname == groups['config_servers'][0]
+  register: docker_compose_cfgsvr_pri_output
+
+- name: check output pri
+  debug:
+    var: docker_compose_cfgsvr_pri_output
+
+- name: (secondary) config servers via docker-compose
+  docker_compose:
+    project_name: cfgsvr
+    pull: yes
+    recreate: "{{ docker_container_force_recreate | ternary('always', 'smart') }}"
+    restarted: "{{ docker_container_restart }}"
+    stopped: "{{ docker_container_stopped }}"
+    state: present
+    definition:
+      version: "2"
+      services:
+        config-server:
+          container_name: mongodb-cfgsvr
+          image: "{{ docker_registry_host }}/bitnami/mongodb-sharded:{{ mongo_version }}"
+          ports:
+            - 27017:27017
+          network_mode: host
+          environment:
+            - "MONGODB_ADVERTISED_HOSTNAME={{ inventory_hostname }}"
+            - "MONGODB_SHARDING_MODE=configsvr"
+            - "MONGODB_PRIMARY_HOST={{ groups['config_servers'][0] }}"
+            - "MONGODB_PRIMARY_ROOT_PASSWORD={{ vault_mongo_root_password }}"
+            - "MONGODB_REPLICA_SET_MODE=secondary"
+            - "MONGODB_REPLICA_SET_KEY={{ vault_mongo_auth_scram_key }}"
+            - "MONGODB_REPLICA_SET_NAME={{ mongo_cfgsvr_replica_set_name }}"
+            - "MONGODB_EXTRA_FLAGS={{ mongo_extra_args }}"
+          volumes:
+            - "{{ mongo_data_volume_path }}:/bitnami/mongodb/data"
+  when: inventory_hostname in groups['config_servers'] and inventory_hostname != groups['config_servers'][0]
+  register: docker_compose_cfgsvr_sec_output
+
+- name: check output sec
+  debug:
+    var: docker_compose_cfgsvr_sec_output

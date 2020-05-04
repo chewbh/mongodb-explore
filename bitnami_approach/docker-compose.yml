@@ -29,7 +29,7 @@ services:
     container_name: mongos-02
     image: bitnami/mongodb-sharded:${MONGODB_VERSION}
     environment:
-      - MONGODB_ADVERTISED_HOSTNAME=mongos-01
+      - MONGODB_ADVERTISED_HOSTNAME=mongos-02
       - MONGODB_SHARDING_MODE=mongos
       - MONGODB_CFG_PRIMARY_HOST=mongo-cfgsvr-01
       - MONGODB_CFG_REPLICA_SET_NAME=configReplSet
