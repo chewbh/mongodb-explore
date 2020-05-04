@@ -53,6 +53,8 @@ Run terraform to start provisioning
 
 ```bashrc
 # In terraform (main.tf), infrastructure resources are declared or described with their desired state (i.e. not procedural)
+
+# input yes when prompt
 terraform apply
 ```
 
@@ -101,4 +103,15 @@ Run ansible to begin automation
 
 [TODO: to add on...]
 
+```
+
+## Tear down mongodb cluster (on digital ocean)
+
+Run terraform destroy to remove everything that was created
+
+```
+cd $install/terraform
+
+# input yes when prompt
+terraform destroy
 ```
