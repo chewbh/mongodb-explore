@@ -1,87 +1,197 @@
+# mongo_shard
+# mongo_shard_2
+# - name: shard_group
+#   debug:
+#     msg: "{{ group_names|select('search','mongo_shard_')|list|first }}"
+# - name: is primary
+#   debug:
+#     msg: "{{ inventory_hostname == groups[group_names|select('search','mongo_shard_')|list|first][0] }}"
+# - name: primary
+#   debug:
+#     msg: "{{ groups[group_names|select('search','mongo_shard_')|list|first][0] }}"
+# - name: is secondary
+#   debug:
+#     msg: "{{ inventory_hostname != groups[group_names|select('search','mongo_shard_')|list|first][0] }}"
+# - name: replica_set_name
+#   debug:
+#     msg: "{{ replica_set_name }}"
+
+#####################################
+
 - name: delete data directory
   file:
-    path: "{{ mongo_data_volume_path }}"
+    path: "{{ mongo_data.local_file_mount_volume_path }}"
     state: absent
     owner: "1001"
     group: "{{ ansible_user_id }}"
     mode: "0755"
   become: yes
+  when: not mongo_data.use_docker_volume
+  tags:
+    - never
+    - wipe_data
 
 - name: create data directory
   file:
-    path: "{{ mongo_data_volume_path }}"
+    path: "{{ mongo_data.local_file_mount_volume_path }}"
     state: directory
     owner: "1001"
     group: "{{ ansible_user_id }}"
     mode: "0755"
   become: yes
+  when: not mongo_data.use_docker_volume
 
-- name: (primary) config servers via docker-compose
-  docker_compose:
-    project_name: cfgsvr
-    pull: yes
-    recreate: "{{ docker_container_force_recreate | ternary('always', 'smart') }}"
-    restarted: "{{ docker_container_restart }}"
-    stopped: "{{ docker_container_stopped }}"
-    state: present
-    definition:
-      version: "2"
-      services:
-        config-server:
-          container_name: mongodb-cfgsvr
-          image: "{{ docker_registry_host }}/bitnami/mongodb-sharded:{{ mongo_version }}"
-          ports:
-            - 27017:27017
-          network_mode: host
-          environment:
-            - "MONGODB_ADVERTISED_HOSTNAME={{ inventory_hostname }}"
-            - "MONGODB_SHARDING_MODE=configsvr"
-            - "MONGODB_ROOT_PASSWORD={{ vault_mongo_root_password }}"
-            - "MONGODB_REPLICA_SET_MODE=primary"
-            - "MONGODB_REPLICA_SET_KEY={{ vault_mongo_auth_scram_key }}"
-            - "MONGODB_REPLICA_SET_NAME={{ mongo_cfgsvr_replica_set_name }}"
-            - "MONGODB_EXTRA_FLAGS={{ mongo_extra_args }}"
-            - "BITNAMI_DEBUG=true"
-          volumes:
-            - "{{ mongo_data_volume_path }}:/bitnami/mongodb/data"
-  when: inventory_hostname == groups['config_servers'][0]
-  register: docker_compose_cfgsvr_pri_output
+- name: "(primary) mongo shard - {{ replica_set_name }}"
+  block:
+    - name: "create a docker volume for (primary) shard {{ replica_set_name }}"
+      docker_volume:
+        name: "{{ mongo_data.docker_volume_name }}"
+      when: mongo_data.use_docker_volume
+    - name: docker container for (primary) shard {{ replica_set_name }}
+      docker_container:
+        pull: yes
+        name: "mongodb-shard-{{ replica_set_name }}"
+        image: "{{ docker_registry_host }}/bitnami/mongodb-sharded:{{ mongo_version }}"
+        state: "{{ docker_container_remove | ternary('absent', docker_container_stopped | ternary('stopped', 'started'))  }}"
+        recreate: "{{ docker_container_force_recreate }}"
+        restart: "{{ docker_container_restart }}"
+        restart_policy: "always"
+        network_mode: "{{ docker_use_hosts_file | ternary('host', 'bridge') }}"
+        env:
+          BITNAMI_DEBUG: "{{mongo_debug | ternary('true', 'false') }}"
+          MONGODB_SYSTEM_LOG_VERBOSITY: "{{ mongo_system_log_verbosity | string }}"
+          MONGODB_DISABLE_SYSTEM_LOG: "{{ mongo_disable_system_log | ternary('true', 'false') }}"
+          MONGODB_MAX_TIMEOUT: "{{ mongo_max_wait_timeout | string }}"
+          MONGODB_ENABLE_DIRECTORY_PER_DB: "{{ mongo_directory_per_db | ternary('true', 'false') }}"
+          MONGODB_ADVERTISED_HOSTNAME: "{{ inventory_hostname }}"
+          MONGODB_SHARDING_MODE: shardsvr
+          MONGODB_MONGOS_HOST: "{{ groups['mongos'][0] }}"
+          MONGODB_ROOT_PASSWORD: "{{ vault_mongo_root_password }}"
+          MONGODB_REPLICA_SET_MODE: primary
+          MONGODB_REPLICA_SET_KEY: "{{ vault_mongo_auth_scram_key }}"
+          MONGODB_REPLICA_SET_NAME: "{{ replica_set_name }}"
+          MONGODB_EXTRA_FLAGS: "{{ mongo_extra_args }}"
+        volumes:
+          - "{{ mongo_data.use_docker_volume | ternary(mongo_data.docker_volume_name, mongo_data.local_file_mount_volume_path) }}:/bitnami/mongodb/data"
+        ports:
+          - 27017:27017
+        healthcheck:
+          # Check if mongo instance is healthy by greping for mongod.
+          # If this fails or timeouts, the healthcheck fails.
+          test:
+            - "{{ mongo_healthcheck.liveness_probe.enabled | ternary('CMD', 'NONE') }}"
+            - "pgrep"
+            - "mongod"
+          start_period: "{{ mongo_healthcheck.liveness_probe.initial_delay_seconds }}"
+          interval: "{{ mongo_healthcheck.liveness_probe.period_seconds }}"
+          timeout: "{{ mongo_healthcheck.liveness_probe.timeout_seconds }}"
+          retries: "{{ mongo_healthcheck.liveness_probe.failure_threshold }}"
+        ulimits:
+          - "nofile:64000:64000"
+          - "nproc:64000:64000"
+      register: docker_shard_pri_output
+  when: inventory_hostname == groups[group_names|select('search','mongo_shard_')|list|first][0]
 
-- name: check output pri
-  debug:
-    var: docker_compose_cfgsvr_pri_output
+- name: "(secondary) mongo shard - {{ replica_set_name }}"
+  block:
+    - name: "create a docker volume for (secondary) shard {{ replica_set_name }}"
+      docker_volume:
+        name: "{{ mongo_data.docker_volume_name }}"
+      when: mongo_data.use_docker_volume
+    - name: docker container for (secondary) shard {{ replica_set_name }}
+      docker_container:
+        pull: yes
+        name: "mongodb-shard-{{ replica_set_name }}"
+        image: "{{ docker_registry_host }}/bitnami/mongodb-sharded:{{ mongo_version }}"
+        state: "{{ docker_container_remove | ternary('absent', docker_container_stopped | ternary('stopped', 'started')) }}"
+        recreate: "{{ docker_container_force_recreate }}"
+        restart: "{{ docker_container_restart }}"
+        restart_policy: "always"
+        network_mode: "{{ docker_use_hosts_file | ternary('host', 'bridge') }}"
+        env:
+          BITNAMI_DEBUG: "{{mongo_debug | ternary('true', 'false') }}"
+          MONGODB_SYSTEM_LOG_VERBOSITY: "{{ mongo_system_log_verbosity | string }}"
+          MONGODB_DISABLE_SYSTEM_LOG: "{{ mongo_disable_system_log | ternary('true', 'false') }}"
+          MONGODB_MAX_TIMEOUT: "{{ mongo_max_wait_timeout | string }}"
+          MONGODB_ENABLE_DIRECTORY_PER_DB: "{{ mongo_directory_per_db | ternary('true', 'false') }}"
+          MONGODB_ADVERTISED_HOSTNAME: "{{ inventory_hostname }}"
+          MONGODB_SHARDING_MODE: shardsvr
+          MONGODB_PRIMARY_HOST: "{{ groups[group_names|select('search','mongo_shard_')|list|first][0] }}"
+          MONGODB_PRIMARY_ROOT_PASSWORD: "{{ vault_mongo_root_password }}"
+          MONGODB_REPLICA_SET_MODE: secondary
+          MONGODB_REPLICA_SET_KEY: "{{ vault_mongo_auth_scram_key }}"
+          MONGODB_REPLICA_SET_NAME: "{{ replica_set_name }}"
+          MONGODB_EXTRA_FLAGS: "{{ mongo_extra_args }}"
+        volumes:
+          - "{{ mongo_data.use_docker_volume | ternary(mongo_data.docker_volume_name, mongo_data.local_file_mount_volume_path) }}:/bitnami/mongodb/data"
+        ports:
+          - 27017:27017
+        healthcheck:
+          # Check if mongo instance is healthy by greping for mongod.
+          # If this fails or timeouts, the healthcheck fails.
+          test:
+            - "{{ mongo_healthcheck.liveness_probe.enabled | ternary('CMD', 'NONE') }}"
+            - "pgrep"
+            - "mongod"
+          start_period: "{{ mongo_healthcheck.liveness_probe.initial_delay_seconds }}"
+          interval: "{{ mongo_healthcheck.liveness_probe.period_seconds }}"
+          timeout: "{{ mongo_healthcheck.liveness_probe.timeout_seconds }}"
+          retries: "{{ mongo_healthcheck.liveness_probe.failure_threshold }}"
+        ulimits:
+          - "nofile:64000:64000"
+          - "nproc:64000:64000"
+      register: docker_shard_sec_output
+  when: inventory_hostname != groups[group_names|select('search','mongo_shard_')|list|first][0]
 
-- name: (secondary) config servers via docker-compose
-  docker_compose:
-    project_name: cfgsvr
-    pull: yes
-    recreate: "{{ docker_container_force_recreate | ternary('always', 'smart') }}"
-    restarted: "{{ docker_container_restart }}"
-    stopped: "{{ docker_container_stopped }}"
-    state: present
-    definition:
-      version: "2"
-      services:
-        config-server:
-          container_name: mongodb-cfgsvr
-          image: "{{ docker_registry_host }}/bitnami/mongodb-sharded:{{ mongo_version }}"
-          ports:
-            - 27017:27017
-          network_mode: host
-          environment:
-            - "MONGODB_ADVERTISED_HOSTNAME={{ inventory_hostname }}"
-            - "MONGODB_SHARDING_MODE=configsvr"
-            - "MONGODB_PRIMARY_HOST={{ groups['config_servers'][0] }}"
-            - "MONGODB_PRIMARY_ROOT_PASSWORD={{ vault_mongo_root_password }}"
-            - "MONGODB_REPLICA_SET_MODE=secondary"
-            - "MONGODB_REPLICA_SET_KEY={{ vault_mongo_auth_scram_key }}"
-            - "MONGODB_REPLICA_SET_NAME={{ mongo_cfgsvr_replica_set_name }}"
-            - "MONGODB_EXTRA_FLAGS={{ mongo_extra_args }}"
-          volumes:
-            - "{{ mongo_data_volume_path }}:/bitnami/mongodb/data"
-  when: inventory_hostname in groups['config_servers'] and inventory_hostname != groups['config_servers'][0]
-  register: docker_compose_cfgsvr_sec_output
+- name: "(arbiter) mongo shard - {{ replica_set_name }}"
+  block:
+    - name: docker container for (arbiter) shard {{ replica_set_name }}
+      docker_container:
+        pull: yes
+        name: "mongodb-shard-{{ hostvars[groups[arbiter_for_replica_set][0]].replica_set_name }}-arb"
+        image: "{{ docker_registry_host }}/bitnami/mongodb-sharded:{{ mongo_version }}"
+        state: "{{ docker_container_remove | ternary('absent', docker_container_stopped | ternary('stopped', 'started')) }}"
+        recreate: "{{ docker_container_force_recreate }}"
+        restart: "{{ docker_container_restart }}"
+        restart_policy: "always"
+        network_mode: "{{ docker_use_hosts_file | ternary('host', 'bridge') }}"
+        env:
+          BITNAMI_DEBUG: "{{mongo_debug | ternary('true', 'false') }}"
+          MONGODB_SYSTEM_LOG_VERBOSITY: "{{ mongo_system_log_verbosity | string }}"
+          MONGODB_DISABLE_SYSTEM_LOG: "{{ mongo_disable_system_log | ternary('true', 'false') }}"
+          MONGODB_MAX_TIMEOUT: "{{ mongo_max_wait_timeout | string }}"
+          MONGODB_ENABLE_DIRECTORY_PER_DB: "{{ mongo_directory_per_db | ternary('true', 'false') }}"
+          MONGODB_ADVERTISED_HOSTNAME: "{{ inventory_hostname }}"
+          MONGODB_SHARDING_MODE: shardsvr
+          MONGODB_PRIMARY_HOST: "{{ groups[arbiter_for_replica_set][0] }}"
+          MONGODB_PRIMARY_ROOT_PASSWORD: "{{ vault_mongo_root_password }}"
+          MONGODB_REPLICA_SET_MODE: arbiter
+          MONGODB_REPLICA_SET_KEY: "{{ vault_mongo_auth_scram_key }}"
+          MONGODB_REPLICA_SET_NAME: "{{ hostvars[groups[arbiter_for_replica_set][0]].replica_set_name }}"
+          MONGODB_EXTRA_FLAGS: "{{ mongo_extra_args }}"
+          MONGODB_PORT_NUMBER: "27018"
+        ports:
+          - 27018:27018
+        healthcheck:
+          # Check if mongo instance is healthy by greping for mongod.
+          # If this fails or timeouts, the healthcheck fails.
+          test:
+            - "{{ mongo_healthcheck.liveness_probe.enabled | ternary('CMD', 'NONE') }}"
+            - "pgrep"
+            - "mongod"
+          start_period: "{{ mongo_healthcheck.liveness_probe.initial_delay_seconds }}"
+          interval: "{{ mongo_healthcheck.liveness_probe.period_seconds }}"
+          timeout: "{{ mongo_healthcheck.liveness_probe.timeout_seconds }}"
+          retries: "{{ mongo_healthcheck.liveness_probe.failure_threshold }}"
+        ulimits:
+          - "nofile:64000:64000"
+          - "nproc:64000:64000"
+      register: docker_shard_arb_output
+  when: arbiter_for_replica_set is defined
 
-- name: check output sec
-  debug:
-    var: docker_compose_cfgsvr_sec_output
+- name: prune unused data volume
+  docker_prune:
+    volumes: yes
+  tags:
+    - never
+    - wipe_data

@@ -1,7 +1,10 @@
 
+[pmm_server]
+${mongos[0].name}.${mongos[0].ipv4_address_private}.xip.io ansible_host=${mongos[0].ipv4_address}
+
 [mongo_shard_1]
 %{ for server in mongo_shard_1.* ~}
-${server.name} ansible_host=${server.ipv4_address} %{ if server.arbiter_replica_set_name != "" } arbiter_replica_set_name=${server.arbiter_replica_set_name}%{ endif }
+${server.name}.${server.ipv4_address_private}.xip.io ansible_host=${server.ipv4_address}%{ if server.arbiter_for_replica_set != "" } arbiter_for_replica_set=${server.arbiter_for_replica_set}%{ endif }
 %{ endfor ~}
 
 [mongo_shard_1:vars]
@@ -10,7 +13,7 @@ replica_set_name=app01RS
 
 [mongo_shard_2]
 %{ for server in mongo_shard_2.* ~}
-${server.name} ansible_host=${server.ipv4_address} %{ if server.arbiter_replica_set_name != "" } arbiter_replica_set_name=${server.arbiter_replica_set_name}%{ endif }
+${server.name}.${server.ipv4_address_private}.xip.io ansible_host=${server.ipv4_address}%{ if server.arbiter_for_replica_set != "" } arbiter_for_replica_set=${server.arbiter_for_replica_set}%{ endif }
 %{ endfor ~}
 
 [mongo_shard_2:vars]
@@ -24,12 +27,12 @@ mongo_shard_2
 [mongos]
 # mongos are also known as query routers
 %{ for server in mongos.* ~}
-${server.name} ansible_host=${server.ipv4_address}
+${server.name}.${server.ipv4_address_private}.xip.io ansible_host=${server.ipv4_address}
 %{ endfor ~}
 
 [config_servers]
 %{ for server in config_servers.* ~}
-${server.name} ansible_host=${server.ipv4_address}
+${server.name}.${server.ipv4_address_private}.xip.io ansible_host=${server.ipv4_address}
 %{ endfor ~}
 
 ########################################################

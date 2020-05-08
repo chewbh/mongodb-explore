@@ -1,4 +1,13 @@
+###########################
+# general
+###########################
+
 is_online: yes
+
+###########################
+# os settings
+###########################
+
 use_hosts_file: yes
 
 os_repos:
@@ -9,26 +18,114 @@ os_repos:
       url: https://download.docker.com/linux/centos/docker-ce.repo
 
 files.server.repo.url: http://xxxx.com/files
+pypi_repository_url: https://pypi.org/simple
 
+###########################
+# docker settings
+###########################
+
+# these 3 define the version of docker and container runtime to use
 docker_version: 19.03.8
 docker_containerd_version: 1.2.13
 docker_containerd_minor_version: 1
 
-pypi_repository_url: https://pypi.org/simple
+# version of docker compose (not actually in use here.., install for fun)
 docker_compose_version: 1.25.4
 docker_compose_install_url: "https://github.com/docker/compose/releases/download/{{ docker_compose_version }}/docker-compose-{{ ansible_system }}-{{ ansible_architecture }}"
 
+# private docker registry to pull images from
 docker_registry_host: docker.io
 
-docker_container_force_recreate: yes
+# recreate all docker containers even if it already exists
+# note that not needed to set to yes for update as any value changes to
+# environment or image version will still cause ansible to recreate the container
+docker_container_force_recreate: no
+
+# tear down all docker containers
+docker_container_remove: no
+
+# restart all existing docker containers
 docker_container_restart: no
+
+# stop all existing docker containers
 docker_container_stopped: no
+
+# set docker network to host, which will allow containers to use host's etc/hosts file
+docker_use_hosts_file: yes
+
+###########################
+# common mongo settings
+###########################
 
 # version of the bitnami mongo's docker tag to use
 mongo_version: 4.2.5
-mongo_cfgsvr_replica_set_name: configReplSet
-mongo_extra_args: "--setParameter internalQueryExecMaxBlockingSortBytes=134217728"
-mongo_data_volume_path: "/data"
 
+mongo_extra_args: "--setParameter internalQueryExecMaxBlockingSortBytes=134217728"
+mongo_data:
+  use_docker_volume: yes
+  docker_volume_name: "mongo_data"
+  local_file_mount_volume_path: "/data"
+
+mongo_directory_per_db: no
+mongo_debug: yes
+mongo_system_log_verbosity: 0
+mongo_disable_system_log: no
+mongo_max_wait_timeout: 120
+
+# password of mongodb's root account
 vault_mongo_root_password: "{{ mongo_root_password }}"
+# value of auth keyfile - used to joining mongo instance to cluster
 vault_mongo_auth_scram_key: "{{ mongo_auth_scram_key }}"
+
+mongo_healthcheck:
+  liveness_probe:
+    enabled: true
+    initial_delay_seconds: 60s
+    period_seconds: 10s #5m30s
+    timeout_seconds: 5s
+    failure_threshold: 6
+    success_threshold: 1
+  # readinessProbe:
+  #   enabled: true
+  #   initialDelaySeconds: 60
+  #   periodSeconds: 10
+  #   timeoutSeconds: 5
+  #   failureThreshold: 6
+  #   successThreshold: 1
+
+###########################
+# mongo cluster settings
+###########################
+
+# replica set name for mongodb - config servers
+# replica set name for various shards are to be inventory file
+mongo_cfgsvr_replica_set_name: configReplSet
+
+###########################
+# monitoring
+###########################
+
+monitoring: yes
+
+# name of the mongodb cluster (for ease of reference in dashboard)
+mongo_cluster_name: mongo42_cluster
+
+pmm_server_version: 2.5.0
+
+pmm_server:
+  metrics:
+    retention: "720h"
+    memory: "262144"
+    resolution: "1s"
+  queries:
+    retention: "8"
+
+vault_pmm_server_user: "{{ pmm_server_user }}"
+vault_pmm_server_password: "{{ pmm_server_password }}"
+
+pmm_client_version: 2.5.0
+pmm_client_image: boonlogic/pmm-client
+
+# password of monitoring service account in mongodb
+vault_mongo_monit_user: "{{ mongo_monit_user }}"
+vault_mongo_monit_password: "{{ mongo_monit_password }}"

@@ -1,0 +1,48 @@
+- name: pmm-server for mongodb cluster monitoring
+  block:
+    - name: "create a docker volume for pmm server - prometheus"
+      docker_volume:
+        name: "pmm_prometheus_data"
+    - name: "create a docker volume for pmm server - consul"
+      docker_volume:
+        name: "pmm_consul_data"
+    - name: "create a docker volume for pmm server - mysql"
+      docker_volume:
+        name: "pmm_mysql_data"
+    - name: "create a docker volume for pmm server - grafana"
+      docker_volume:
+        name: "pmm_grafana_data"
+    - name: docker container for pmm-server
+      docker_container:
+        pull: yes
+        name: pmm-server
+        image: "{{ docker_registry_host }}/percona/pmm-server:{{ pmm_server_version }}"
+        state: "{{ docker_container_remove | ternary('absent', docker_container_stopped | ternary('stopped', 'started'))  }}"
+        recreate: "{{ docker_container_force_recreate }}"
+        restart: "{{ docker_container_restart }}"
+        restart_policy: "always"
+        # network_mode: "{{ docker_use_hosts_file | ternary('host', 'bridge') }}"
+        env:
+          METRICS_RETENTION: "{{ pmm_server.metrics.retention }}"
+          METRICS_MEMORY: "{{ pmm_server.metrics.memory }}"
+          METRICS_RESOLUTION: "{{ pmm_server.metrics.resolution }}"
+          QUERIES_RETENTION: "{{ pmm_server.queries.retention }}"
+        ports:
+          - 80:80
+          - 443:443
+        volumes:
+          - "pmm_prometheus_data:/opt/prometheus/data"
+          - "pmm_consul_data:/opt/consul-data"
+          - "pmm_mysql_data:/var/lib/mysql"
+          - "pmm_grafana_data:/var/lib/grafana"
+        # etc_hosts:
+        #   mongo: "{{ hostvars[inventory_hostname].ansible_default_ipv4.address }}"
+        #   pmm-server: "{{ hostvars[groups['pmm_server'][0]].ansible_default_ipv4.address }}"
+      register: docker_pmm_server
+
+- name: prune unused data volume
+  docker_prune:
+    volumes: yes
+  tags:
+    - never
+    - wipe_data

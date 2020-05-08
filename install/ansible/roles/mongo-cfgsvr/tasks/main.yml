@@ -1,0 +1,130 @@
+- name: delete data directory
+  file:
+    path: "{{ mongo_data.local_file_mount_volume_path }}"
+    state: absent
+    owner: "1001"
+    group: "{{ ansible_user_id }}"
+    mode: "0755"
+  become: yes
+  when: not mongo_data.use_docker_volume
+  tags:
+    - never
+    - wipe_data
+
+- name: create data directory
+  file:
+    path: "{{ mongo_data.local_file_mount_volume_path }}"
+    state: directory
+    owner: "1001"
+    group: "{{ ansible_user_id }}"
+    mode: "0755"
+  become: yes
+  when: not mongo_data.use_docker_volume
+
+- name: (primary) config server
+  block:
+    - name: create a docker volume for (primary) config server
+      docker_volume:
+        name: "{{ mongo_data.docker_volume_name }}"
+      when: mongo_data.use_docker_volume
+    - name: docker container for (primary) config server
+      docker_container:
+        pull: yes
+        name: mongodb-cfgsvr
+        image: "{{ docker_registry_host }}/bitnami/mongodb-sharded:{{ mongo_version }}"
+        state: "{{ docker_container_remove | ternary('absent', docker_container_stopped | ternary('stopped', 'started'))  }}"
+        recreate: "{{ docker_container_force_recreate }}"
+        restart: "{{ docker_container_restart }}"
+        restart_policy: "always"
+        network_mode: "{{ docker_use_hosts_file | ternary('host', 'bridge') }}"
+        env:
+          BITNAMI_DEBUG: "{{mongo_debug | ternary('true', 'false') }}"
+          MONGODB_SYSTEM_LOG_VERBOSITY: "{{ mongo_system_log_verbosity | string }}"
+          MONGODB_DISABLE_SYSTEM_LOG: "{{ mongo_disable_system_log | ternary('true', 'false') }}"
+          MONGODB_MAX_TIMEOUT: "{{ mongo_max_wait_timeout | string }}"
+          MONGODB_ENABLE_DIRECTORY_PER_DB: "{{ mongo_directory_per_db | ternary('true', 'false') }}"
+          MONGODB_ADVERTISED_HOSTNAME: "{{ inventory_hostname }}"
+          MONGODB_SHARDING_MODE: configsvr
+          MONGODB_ROOT_PASSWORD: "{{ vault_mongo_root_password }}"
+          MONGODB_REPLICA_SET_MODE: primary
+          MONGODB_REPLICA_SET_KEY: "{{ vault_mongo_auth_scram_key }}"
+          MONGODB_REPLICA_SET_NAME: "{{ mongo_cfgsvr_replica_set_name }}"
+          MONGODB_EXTRA_FLAGS: "{{ mongo_extra_args }}"
+        volumes:
+          - "{{ mongo_data.use_docker_volume | ternary(mongo_data.docker_volume_name, mongo_data.local_file_mount_volume_path) }}:/bitnami/mongodb/data"
+        ports:
+          - 27017:27017
+        healthcheck:
+          # Check if mongo instance is healthy by greping for mongod.
+          # If this fails or timeouts, the healthcheck fails.
+          test:
+            - "{{ mongo_healthcheck.liveness_probe.enabled | ternary('CMD', 'NONE') }}"
+            - "pgrep"
+            - "mongod"
+          start_period: "{{ mongo_healthcheck.liveness_probe.initial_delay_seconds }}"
+          interval: "{{ mongo_healthcheck.liveness_probe.period_seconds }}"
+          timeout: "{{ mongo_healthcheck.liveness_probe.timeout_seconds }}"
+          retries: "{{ mongo_healthcheck.liveness_probe.failure_threshold }}"
+        ulimits:
+          - "nofile:64000:64000"
+          - "nproc:64000:64000"
+      register: docker_cfgsvr_pri_output
+  when: inventory_hostname == groups['config_servers'][0]
+
+- name: (secondary) config server
+  block:
+    - name: create a docker volume for (secondary) config server
+      docker_volume:
+        name: "{{ mongo_data.docker_volume_name }}"
+      when: mongo_data.use_docker_volume
+    - name: docker container for (secondary) config server
+      docker_container:
+        pull: yes
+        name: mongodb-cfgsvr
+        image: "{{ docker_registry_host }}/bitnami/mongodb-sharded:{{ mongo_version }}"
+        state: "{{ docker_container_remove | ternary('absent', docker_container_stopped | ternary('stopped', 'started')) }}"
+        recreate: "{{ docker_container_force_recreate }}"
+        restart: "{{ docker_container_restart }}"
+        restart_policy: "always"
+        network_mode: "{{ docker_use_hosts_file | ternary('host', 'bridge') }}"
+        env:
+          BITNAMI_DEBUG: "{{mongo_debug | ternary('true', 'false') }}"
+          MONGODB_SYSTEM_LOG_VERBOSITY: "{{ mongo_system_log_verbosity | string }}"
+          MONGODB_DISABLE_SYSTEM_LOG: "{{ mongo_disable_system_log | ternary('true', 'false') }}"
+          MONGODB_MAX_TIMEOUT: "{{ mongo_max_wait_timeout | string }}"
+          MONGODB_ENABLE_DIRECTORY_PER_DB: "{{ mongo_directory_per_db | ternary('true', 'false') }}"
+          MONGODB_ADVERTISED_HOSTNAME: "{{ inventory_hostname }}"
+          MONGODB_SHARDING_MODE: configsvr
+          MONGODB_PRIMARY_HOST: "{{ groups['config_servers'][0] }}"
+          MONGODB_PRIMARY_ROOT_PASSWORD: "{{ vault_mongo_root_password }}"
+          MONGODB_REPLICA_SET_MODE: secondary
+          MONGODB_REPLICA_SET_KEY: "{{ vault_mongo_auth_scram_key }}"
+          MONGODB_REPLICA_SET_NAME: "{{ mongo_cfgsvr_replica_set_name }}"
+          MONGODB_EXTRA_FLAGS: "{{ mongo_extra_args }}"
+        volumes:
+          - "{{ mongo_data.use_docker_volume | ternary(mongo_data.docker_volume_name, mongo_data.local_file_mount_volume_path) }}:/bitnami/mongodb/data"
+        ports:
+          - 27017:27017
+        healthcheck:
+          # Check if mongo instance is healthy by greping for mongod.
+          # If this fails or timeouts, the healthcheck fails.
+          test:
+            - "{{ mongo_healthcheck.liveness_probe.enabled | ternary('CMD', 'NONE') }}"
+            - "pgrep"
+            - "mongod"
+          start_period: "{{ mongo_healthcheck.liveness_probe.initial_delay_seconds }}"
+          interval: "{{ mongo_healthcheck.liveness_probe.period_seconds }}"
+          timeout: "{{ mongo_healthcheck.liveness_probe.timeout_seconds }}"
+          retries: "{{ mongo_healthcheck.liveness_probe.failure_threshold }}"
+        ulimits:
+          - "nofile:64000:64000"
+          - "nproc:64000:64000"
+      register: docker_cfgsvr_sec_output
+  when: inventory_hostname in groups['config_servers'] and inventory_hostname != groups['config_servers'][0]
+
+- name: prune unused data volume
+  docker_prune:
+    volumes: yes
+  tags:
+    - never
+    - wipe_data

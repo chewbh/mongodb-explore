@@ -1,0 +1,5 @@
+- hosts: mongodb_cluster
+  gather_facts: True
+  gather_subset: [network, hardware]
+  roles:
+    - standard-node

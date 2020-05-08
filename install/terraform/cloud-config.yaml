@@ -1,0 +1,11 @@
+#cloud-config
+users:
+  # add sysadmin user with password
+  - name: sysadmin
+    groups: wheel
+    passwd: ${sysadmin_password}
+    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
+    lock_passwd: false
+runcmd:
+  - sed -i '/^[^#]*PasswordAuthentication[[:space:]]no/c\PasswordAuthentication yes' /etc/ssh/sshd_config
+  - systemctl restart sshd

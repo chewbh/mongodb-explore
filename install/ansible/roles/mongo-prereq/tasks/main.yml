@@ -52,6 +52,10 @@
   become: yes
   with_items:
     - 27017/tcp # mongodb port
+    - 27018/tcp # mongodb arbiter port
+    - 42000-51999/tcp # pmm client monitoring ports
+    - 80/tcp # pmm server (web)
+    - 443/tcp # pmm server (web/tls)
   notify: restart firewalld
 
 - name: flush to force firewalld and docker to restart if needed

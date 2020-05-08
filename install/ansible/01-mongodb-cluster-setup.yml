@@ -1,13 +1,27 @@
-# - hosts: all
-#   gather_facts: True
-#   gather_subset: [network, hardware]
-#   roles:
-# - standard-node
-# - mongo-prereq
-
-- hosts: config_servers
+# let ansible gather info on all mongodb nodes first before running any automation
+- hosts: mongodb_cluster
   gather_facts: True
   gather_subset: [network, hardware]
+  tasks: []
+
+- hosts: pmm_server
+  gather_facts: False
   roles:
-    - mongo-prereq
-    - mongo-shard
+    - pmm-server
+#
+# - hosts: config_servers
+#   gather_facts: False
+#   serial: 1 # rolling update instead of parallel automate every config servers
+#   roles:
+#     - mongo-cfgsvr
+#
+- hosts: mongos
+  gather_facts: False
+  serial: 1 # rolling update instead of parallel automate every config servers
+  roles:
+    - mongos
+#
+# - hosts: mongo_shards
+#   serial: 1 # rolling update instead of parallel automate every config servers
+#   roles:
+#     - mongo-shard

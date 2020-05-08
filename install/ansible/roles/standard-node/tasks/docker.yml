@@ -164,19 +164,19 @@
     append: yes
   become: yes
 
-# - name: install docker-compose from {{ docker_compose_version }}
-#   get_url:
-#     url: "{{ docker_compose_install_url }}"
-#     dest: "/usr/local/bin/docker-compose"
-#     validate_certs: no
-#     mode: "0755"
-#   become: yes
-
-- name: install docker-compose via python pip
-  pip:
-    name: "docker-compose=={{ docker_compose_version }}"
-    extra_args: "-i {{ pypi_repository_url }}"
+- name: install docker-compose from {{ docker_compose_version }}
+  get_url:
+    url: "{{ docker_compose_install_url }}"
+    dest: "/usr/local/bin/docker-compose"
+    validate_certs: no
+    mode: "0755"
   become: yes
+
+# - name: install docker-compose via python pip
+#   pip:
+#     name: "docker-compose=={{ docker_compose_version }}"
+#     extra_args: "-i {{ pypi_repository_url }}"
+#   become: yes
 
 - import_tasks: docker_tls.yml
   when: not is_online

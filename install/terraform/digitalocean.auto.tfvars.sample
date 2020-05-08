@@ -7,5 +7,5 @@ ssh_key_name        = ""
 # local filename of the ssh key
 ssh_key_file = "<user home directory>/.ssh/id_rsa"
 
-# sysadmin password
+# (md5) hash of sysadmin password (generate by running openssl passwd -1 <password>)
 sysadmin_password = ""
