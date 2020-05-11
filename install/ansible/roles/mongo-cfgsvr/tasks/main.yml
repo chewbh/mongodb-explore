@@ -1,24 +1,51 @@
-- name: delete data directory
-  file:
-    path: "{{ mongo_data.local_file_mount_volume_path }}"
-    state: absent
-    owner: "1001"
-    group: "{{ ansible_user_id }}"
-    mode: "0755"
-  become: yes
-  when: not mongo_data.use_docker_volume
-  tags:
-    - never
-    - wipe_data
-
-- name: create data directory
-  file:
-    path: "{{ mongo_data.local_file_mount_volume_path }}"
-    state: directory
-    owner: "1001"
-    group: "{{ ansible_user_id }}"
-    mode: "0755"
-  become: yes
+- name: "local file mount for {{ mongo_data.local_file_mount_volume_path }}"
+  block:
+    - name: create data directory
+      file:
+        path: "{{ mongo_data.local_file_mount_volume_path }}"
+        state: directory
+        owner: "1001"
+        group: "{{ ansible_user_id }}"
+        mode: "0755"
+      become: yes
+    - name: "create lvm volume group for {{ mongo_data.local_file_mount_volume_path }}"
+      lvg:
+        vg: "{{ mongo_data.local_file_mount_lvm.vg_name }}"
+        pvs: ["{{ mongo_data_local_file_mount_lvm_pvs }}"]
+      become: yes
+      when: mongo_data.local_file_mount_lvm.enabled
+    - name: "create lvm locical volume for {{ mongo_data.local_file_mount_volume_path }}"
+      lvol:
+        vg: "{{ mongo_data.local_file_mount_lvm.vg_name }}"
+        lv: "{{ mongo_data.local_file_mount_lvm.lv_name }}"
+        size: "{{ mongo_data.local_file_mount_lvm.size }}"
+      become: yes
+      when: mongo_data.local_file_mount_lvm.enabled
+    - name: "create a xfs filesystem on lvm for {{ mongo_data.local_file_mount_volume_path }}"
+      filesystem:
+        fstype: "xfs"
+        dev: "/dev/mapper/{{ mongo_data.local_file_mount_lvm.vg_name }}-{{ mongo_data.local_file_mount_lvm.lv_name }}"
+        force: no
+      become: yes
+      when: mongo_data.local_file_mount_lvm.enabled
+    - name: mount lvm locial volume
+      mount:
+        path: "{{ mongo_data.local_file_mount_volume_path }}"
+        src: "/dev/mapper/{{ mongo_data.local_file_mount_lvm.vg_name }}-{{ mongo_data.local_file_mount_lvm.lv_name }}"
+        fstype: "xfs"
+        opts: defaults,noatime,nodiratime
+        state: mounted
+      become: yes
+      when: mongo_data.local_file_mount_lvm.enabled
+    - name: ensure data directory ownership is correct
+      file:
+        path: "{{ mongo_data.local_file_mount_volume_path }}"
+        state: directory
+        owner: "1001"
+        group: "{{ ansible_user_id }}"
+        mode: "0755"
+      become: yes
+      when: mongo_data.local_file_mount_lvm.enabled
   when: not mongo_data.use_docker_volume
 
 - name: (primary) config server
@@ -49,7 +76,7 @@
           MONGODB_REPLICA_SET_MODE: primary
           MONGODB_REPLICA_SET_KEY: "{{ vault_mongo_auth_scram_key }}"
           MONGODB_REPLICA_SET_NAME: "{{ mongo_cfgsvr_replica_set_name }}"
-          MONGODB_EXTRA_FLAGS: "{{ mongo_extra_args }}"
+          MONGODB_EXTRA_FLAGS: "{{ mongod_extra_args }}"
         volumes:
           - "{{ mongo_data.use_docker_volume | ternary(mongo_data.docker_volume_name, mongo_data.local_file_mount_volume_path) }}:/bitnami/mongodb/data"
         ports:
@@ -69,6 +96,39 @@
           - "nofile:64000:64000"
           - "nproc:64000:64000"
       register: docker_cfgsvr_pri_output
+    - name: docker container for pmm-client (monitoring)
+      docker_container:
+        pull: yes
+        name: pmm-client-cfgsvr
+        image: "{{ docker_registry_host }}/{{ pmm_client_image }}:{{ pmm_client_version }}"
+        state: "{{ docker_container_remove | ternary('absent', docker_container_stopped | ternary('stopped', 'started'))  }}"
+        recreate: "{{ docker_container_force_recreate or pmm_agent_recreate }}"
+        restart: "{{ docker_container_restart }}"
+        restart_policy: "always"
+        network_mode: "{{ docker_use_hosts_file | ternary('host', 'bridge') }}"
+        env:
+          PMM_AGENT_CONFIG_FILE: "/usr/local/percona/pmm2/config/pmm-agent.yaml"
+          PMM_AGENT_SETUP: "1"
+          PMM_AGENT_SETUP_NODE_TYPE: "container"
+          PMM_AGENT_SETUP_NODE_NAME: "{{ inventory_hostname }}"
+          PMM_AGENT_SETUP_CONTAINER_NAME: "{{ inventory_hostname }}-cfgsvr"
+          PMM_AGENT_SETUP_FORCE: "1"
+          PMM_AGENT_SERVER_ADDRESS: "{{ groups['pmm_server'][0] }}:443"
+          PMM_AGENT_SERVER_USERNAME: "{{ vault_pmm_server_user }}"
+          PMM_AGENT_SERVER_PASSWORD: "{{ vault_pmm_server_password }}"
+          PMM_AGENT_SERVER_INSECURE_TLS: "1"
+          # custom variable for setup (extended for automatically run post setup action to add service)
+          DB_TYPE: mongodb
+          DB_USER: "{{ vault_mongo_monit_user }}"
+          DB_PASSWORD: "{{ vault_mongo_monit_password }}"
+          DB_ADDRESS: "{{ inventory_hostname }}:27017"
+          SERVICE_NAME: "{{ inventory_hostname }}-cfgsvr"
+          DB_CLUSTER_NAME: "{{ mongo_cluster_name }}"
+        ports:
+          - 42000:42000 # node exporter
+          - 42001:42001 # mongodb exporter
+      register: docker_pmmclient
+      when: pmm_agent_setup
   when: inventory_hostname == groups['config_servers'][0]
 
 - name: (secondary) config server
@@ -100,7 +160,7 @@
           MONGODB_REPLICA_SET_MODE: secondary
           MONGODB_REPLICA_SET_KEY: "{{ vault_mongo_auth_scram_key }}"
           MONGODB_REPLICA_SET_NAME: "{{ mongo_cfgsvr_replica_set_name }}"
-          MONGODB_EXTRA_FLAGS: "{{ mongo_extra_args }}"
+          MONGODB_EXTRA_FLAGS: "{{ mongod_extra_args }}"
         volumes:
           - "{{ mongo_data.use_docker_volume | ternary(mongo_data.docker_volume_name, mongo_data.local_file_mount_volume_path) }}:/bitnami/mongodb/data"
         ports:
@@ -120,11 +180,55 @@
           - "nofile:64000:64000"
           - "nproc:64000:64000"
       register: docker_cfgsvr_sec_output
+    - name: docker container for pmm-client (monitoring)
+      docker_container:
+        pull: yes
+        name: pmm-client-cfgsvr
+        image: "{{ docker_registry_host }}/{{ pmm_client_image }}:{{ pmm_client_version }}"
+        state: "{{ docker_container_remove | ternary('absent', docker_container_stopped | ternary('stopped', 'started'))  }}"
+        recreate: "{{ docker_container_force_recreate or pmm_agent_recreate }}"
+        restart: "{{ docker_container_restart }}"
+        restart_policy: "always"
+        network_mode: "{{ docker_use_hosts_file | ternary('host', 'bridge') }}"
+        env:
+          PMM_AGENT_CONFIG_FILE: "/usr/local/percona/pmm2/config/pmm-agent.yaml"
+          PMM_AGENT_SETUP: "1"
+          PMM_AGENT_SETUP_NODE_TYPE: "container"
+          PMM_AGENT_SETUP_NODE_NAME: "{{ inventory_hostname }}"
+          PMM_AGENT_SETUP_CONTAINER_NAME: "{{ inventory_hostname }}-cfgsvr"
+          PMM_AGENT_SETUP_FORCE: "1"
+          PMM_AGENT_SERVER_ADDRESS: "{{ groups['pmm_server'][0] }}:443"
+          PMM_AGENT_SERVER_USERNAME: "{{ vault_pmm_server_user }}"
+          PMM_AGENT_SERVER_PASSWORD: "{{ vault_pmm_server_password }}"
+          PMM_AGENT_SERVER_INSECURE_TLS: "1"
+          # custom variable for setup (extended for automatically run post setup action to add service)
+          DB_TYPE: mongodb
+          DB_USER: "{{ vault_mongo_monit_user }}"
+          DB_PASSWORD: "{{ vault_mongo_monit_password }}"
+          DB_ADDRESS: "{{ inventory_hostname }}:27017"
+          SERVICE_NAME: "{{ inventory_hostname }}-cfgsvr"
+          DB_CLUSTER_NAME: "{{ mongo_cluster_name }}"
+        ports:
+          - 42000:42000 # node exporter
+          - 42001:42001 # mongodb exporter
+      register: docker_pmmclient
+      when: pmm_agent_setup
   when: inventory_hostname in groups['config_servers'] and inventory_hostname != groups['config_servers'][0]
 
 - name: prune unused data volume
   docker_prune:
     volumes: yes
+  tags:
+    - never
+    - wipe_data
+
+- name: perform delete on data directory
+  shell: |
+    mount -a
+    rm -rf "{{ mongo_data.local_file_mount_volume_path }}/*"
+  become: yes
+  changed_when: no
+  when: not mongo_data.use_docker_volume
   tags:
     - never
     - wipe_data

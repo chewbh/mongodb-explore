@@ -51,6 +51,15 @@ resource "digitalocean_droplet" "mongos" {
   })
 }
 
+resource "digitalocean_volume" "config_servers" {
+  count                    = 3
+  region                   = "sgp1"
+  name                     = "vol-cfgsvr-${count.index + 1}"
+  size                     = 50
+  initial_filesystem_label = "mongodata"
+  description              = "persistent data for config server"
+}
+
 # create the VMs for config servers
 resource "digitalocean_droplet" "config_servers" {
   count              = 3
@@ -62,10 +71,20 @@ resource "digitalocean_droplet" "config_servers" {
   tags               = ["mongodb", "cfgsvr"]
   ssh_keys           = [digitalocean_ssh_key.local.id]
   private_networking = true
+  volume_ids         = [digitalocean_volume.config_servers[count.index].id]
   user_data = templatefile("${path.module}/cloud-config.yaml", {
     domain            = digitalocean_domain.default.name
     sysadmin_password = var.sysadmin_password
   })
+}
+
+resource "digitalocean_volume" "mongo_shard_1" {
+  count                    = 2
+  region                   = "sgp1"
+  name                     = "vol-mongo-shard-1-${count.index + 1}"
+  size                     = 50
+  initial_filesystem_label = "mongodata"
+  description              = "persistent data for config server"
 }
 
 # create the VMs for mongo shard 1
@@ -79,10 +98,20 @@ resource "digitalocean_droplet" "mongo_shard_1" {
   tags               = ["mongodb", "app01RS"]
   ssh_keys           = [digitalocean_ssh_key.local.id]
   private_networking = true
+  volume_ids         = [digitalocean_volume.mongo_shard_1[count.index].id]
   user_data = templatefile("${path.module}/cloud-config.yaml", {
     domain            = digitalocean_domain.default.name
     sysadmin_password = var.sysadmin_password
   })
+}
+
+resource "digitalocean_volume" "mongo_shard_2" {
+  count                    = 2
+  region                   = "sgp1"
+  name                     = "vol-mongo-shard-2-${count.index + 1}"
+  size                     = 50
+  initial_filesystem_label = "mongodata"
+  description              = "persistent data for config server"
 }
 
 # create the VMs for mongo shard 2
@@ -96,6 +125,7 @@ resource "digitalocean_droplet" "mongo_shard_2" {
   tags               = ["mongodb", "app02RS"]
   ssh_keys           = [digitalocean_ssh_key.local.id]
   private_networking = true
+  volume_ids         = [digitalocean_volume.mongo_shard_2[count.index].id]
   user_data = templatefile("${path.module}/cloud-config.yaml", {
     domain            = digitalocean_domain.default.name
     sysadmin_password = var.sysadmin_password
@@ -119,6 +149,12 @@ resource "digitalocean_firewall" "mongodb-firewall" {
   inbound_rule {
     protocol         = "tcp"
     port_range       = "27017"
+    source_addresses = ["0.0.0.0/0"]
+  }
+
+  inbound_rule {
+    protocol         = "tcp"
+    port_range       = "42000-42001"
     source_addresses = ["0.0.0.0/0"]
   }
 

@@ -8,7 +8,7 @@ is_online: yes
 # os settings
 ###########################
 
-use_hosts_file: yes
+use_hosts_file: no
 
 os_repos:
   offline:
@@ -60,11 +60,34 @@ docker_use_hosts_file: yes
 # version of the bitnami mongo's docker tag to use
 mongo_version: 4.2.5
 
-mongo_extra_args: "--setParameter internalQueryExecMaxBlockingSortBytes=134217728"
+# --set Parameter internalQueryExecMaxBlockingSortBytes => increase internal memory for sorting (needed for large query)
+# --profile 2 => log all queries for profiling (note that this flag cannot be applied to mongos)
+# --profile 1 => log only queries that exceed --slowms for profiling (note that this flag cannot be applied to mongos)
+# --slowOpSampleRate => sampling rate for queries exceeding --slowms (set to 1 to log all queries that exceed threshold)
+mongos_extra_args: "--setParameter internalQueryExecMaxBlockingSortBytes=134217728 --slowms 200 --slowOpSampleRate 1"
+mongod_extra_args: "--setParameter internalQueryExecMaxBlockingSortBytes=134217728 --profile 2 --slowms 200 --slowOpSampleRate 1"
+
 mongo_data:
-  use_docker_volume: yes
+  use_docker_volume: no
   docker_volume_name: "mongo_data"
+
   local_file_mount_volume_path: "/data"
+  # configure file mount to use lvm for managing the storage mount point
+  local_file_mount_lvm:
+    # lvm volume group name
+    enabled: yes
+    vg_name: vgmongodata
+    lv_name: mongodata
+    size: 45g
+
+mongo_data_local_file_mount_lvm_pvs: /dev/disk/by-id/scsi-0DO_Volume_vol-cfgsvr-1
+
+# sudo lvmdiskscan
+# sudo pvcreate /dev/sdb /dev/sdc (create physical volume from the physical devices)
+# sudo vgcreate vgmongodata /dev/sda /dev/sdc (add pv to and create volume group)
+# sudo lvcreate -L 100G -n mongodata vgmongodata (create logical volume from vg)
+# sudo mkfs.xfs /dev/vgmongodata/mongodata (format logocal volume)
+# mount and update /etc/fstab (preferrable using UUID)
 
 mongo_directory_per_db: no
 mongo_debug: yes
@@ -85,13 +108,6 @@ mongo_healthcheck:
     timeout_seconds: 5s
     failure_threshold: 6
     success_threshold: 1
-  # readinessProbe:
-  #   enabled: true
-  #   initialDelaySeconds: 60
-  #   periodSeconds: 10
-  #   timeoutSeconds: 5
-  #   failureThreshold: 6
-  #   successThreshold: 1
 
 ###########################
 # mongo cluster settings
@@ -105,7 +121,14 @@ mongo_cfgsvr_replica_set_name: configReplSet
 # monitoring
 ###########################
 
-monitoring: yes
+# this indicate if pmm agent will be setup along side their mongodb instance
+# each agent should monitor mongo instances in the same node they resides on
+pmm_agent_setup: no
+
+# recreate docker container for pmm agents
+# if docker_container_force_recreate is no and this is yes, it will only
+# force recreate pmm agents and not their mongodb instances
+pmm_agent_recreate: no
 
 # name of the mongodb cluster (for ease of reference in dashboard)
 mongo_cluster_name: mongo42_cluster

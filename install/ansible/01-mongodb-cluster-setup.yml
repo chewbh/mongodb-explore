@@ -8,20 +8,20 @@
   gather_facts: False
   roles:
     - pmm-server
-#
-# - hosts: config_servers
-#   gather_facts: False
-#   serial: 1 # rolling update instead of parallel automate every config servers
-#   roles:
-#     - mongo-cfgsvr
-#
+
+- hosts: config_servers
+  gather_facts: False
+  serial: 1 # rolling update instead of parallel automate every config servers
+  roles:
+    - mongo-cfgsvr
+
 - hosts: mongos
   gather_facts: False
   serial: 1 # rolling update instead of parallel automate every config servers
   roles:
     - mongos
-#
-# - hosts: mongo_shards
-#   serial: 1 # rolling update instead of parallel automate every config servers
-#   roles:
-#     - mongo-shard
+
+- hosts: mongo_shards
+  serial: 1 # rolling update instead of parallel automate every config servers
+  roles:
+    - mongo-shard

@@ -4,7 +4,7 @@ ${mongos[0].name}.${mongos[0].ipv4_address_private}.xip.io ansible_host=${mongos
 
 [mongo_shard_1]
 %{ for server in mongo_shard_1.* ~}
-${server.name}.${server.ipv4_address_private}.xip.io ansible_host=${server.ipv4_address}%{ if server.arbiter_for_replica_set != "" } arbiter_for_replica_set=${server.arbiter_for_replica_set}%{ endif }
+${server.name}.${server.ipv4_address_private}.xip.io ansible_host=${server.ipv4_address}%{ if server.arbiter_for_replica_set != "" } arbiter_for_replica_set=${server.arbiter_for_replica_set}%{ endif } mongo_data_local_file_mount_lvm_pvs=/dev/disk/by-id/scsi-0DO_Volume_vol-${server.name}
 %{ endfor ~}
 
 [mongo_shard_1:vars]
@@ -13,7 +13,7 @@ replica_set_name=app01RS
 
 [mongo_shard_2]
 %{ for server in mongo_shard_2.* ~}
-${server.name}.${server.ipv4_address_private}.xip.io ansible_host=${server.ipv4_address}%{ if server.arbiter_for_replica_set != "" } arbiter_for_replica_set=${server.arbiter_for_replica_set}%{ endif }
+${server.name}.${server.ipv4_address_private}.xip.io ansible_host=${server.ipv4_address}%{ if server.arbiter_for_replica_set != "" } arbiter_for_replica_set=${server.arbiter_for_replica_set}%{ endif } mongo_data_local_file_mount_lvm_pvs=/dev/disk/by-id/scsi-0DO_Volume_vol-${server.name}
 %{ endfor ~}
 
 [mongo_shard_2:vars]
@@ -32,7 +32,7 @@ ${server.name}.${server.ipv4_address_private}.xip.io ansible_host=${server.ipv4_
 
 [config_servers]
 %{ for server in config_servers.* ~}
-${server.name}.${server.ipv4_address_private}.xip.io ansible_host=${server.ipv4_address}
+${server.name}.${server.ipv4_address_private}.xip.io ansible_host=${server.ipv4_address} mongo_data_local_file_mount_lvm_pvs=/dev/disk/by-id/scsi-0DO_Volume_vol-${server.name}
 %{ endfor ~}
 
 ########################################################

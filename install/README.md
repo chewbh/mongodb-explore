@@ -47,7 +47,7 @@ Fill in token, ssh key, and password used in the `digitalocean.auto.tfvars` file
    - **ssh_key_name** - name that identifies your ssh public key in digital ocean (just provide a meaningful name e.g. jason_ssh_key)
    - **ssh_key_file** - local file path to your ssh key (default should be `$home_directory/.ssh/id_rsa`)
      - To create ssh key, run `ssh-keygen -t rsa -b 4096`
-   - **sysadmin_password** - password of os user (sysadmin). sysadmin is the default os user that will be created as part of the terraform provisioning
+   - **sysadmin_password** - password hash of os user (sysadmin). sysadmin is the default os user that will be created as part of the terraform provisioning. use `openssl passwd -1 <password>` to generate the hash.
 
 Run terraform to start provisioning
 
@@ -79,6 +79,10 @@ Set the following secrets and password for mongodb. It will be stored in `group_
 
 - **mongo_root_password** - password of default root user account in mongo
 - **mongo_auth_scram_key** - authentication keyfile value. This is a secret key for all mongodb instance in the cluster to trust each other. It should be between 6 to 1024 characthers.
+- **mongo_monit_user** - username of monitor user account in mongo. This account is used by monitoring tool to access mongo via prometheus
+- **mongo_monit_password** - password of monitor user account in mongo.
+- **pmm_server_user** - username of account for pmm agent to communicate with pmm server
+- **pmm_server_password** - password of account for pmm agent to communicate with pmm server
 
 To set the secrets and passwords, run the following script
 
@@ -86,6 +90,19 @@ To set the secrets and passwords, run the following script
 # use previously generated ansible vault secret to encrypt the above parameters
 ./02_generate_vault_4_mongo.sh
 ```
+
+Configure the setup by modifying the setting in `ansible/group_vars/all/vars.yml` as needed. Here is some settings that you might ar least want to consider changing:
+
+- is_online - indicate if environment is with internet (digital ocean) or air-gapped. The automation will run quite differently depending on this (add different yum repo and docker registry)
+
+- use_hosts_file - set to yes to generate entries on etc/hosts. Generally should not be needed as dns is preferred. In fact, this is discouraged. Note that setting this to yes will also **result in docker containers that run mongodb to use host network instead of the default bridge network**, which might not be desirable. It need to set to host network so that entries in the etc/hosts file can be recognize inside docker containers without explicitly stating each of them in every containers.
+
+For air-gapped environment, please change the following as well:
+
+- os_repos.offline.epel.url - yum repository url for EPEL
+- os_repos.offline.docker.url - yum repository url for docker-ce binaries
+- docker_registry_host - hostname for private docker registry
+- docker_compose_install_url - url for downloading docker compose from artifactory (note that docker compose is not really in use in this setup)
 
 Run ansible to begin automation
 
@@ -95,6 +112,17 @@ Run ansible to begin automation
 ```
 
 ## Additional Info
+
+### xip.io
+
+Internet based setup uses `xip.io` domain to avoid the need to setup dns server and entries for mongodb nodes.
+
+On internet accessible network, `xip.io` is a magic domain name that provides wildcard DNS for any IP address. For example, given `mongo-shard-1-1.10.104.0.5.xip.io`, DNS will resolves it to 10.104.0.5.
+
+**How it works**
+When your computer looks up a xip.io domain, the xip.io DNS server extracts the IP address from the domain and sends it back in the response.
+
+### Understanding Ansible Inventory for MongoDB cluster
 
 `inventory` file defines how the mongodb-cluster will be structured
 

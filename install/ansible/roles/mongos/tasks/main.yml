@@ -22,7 +22,7 @@
           MONGODB_CFG_REPLICA_SET_NAME: "{{ mongo_cfgsvr_replica_set_name }}"
           MONGODB_ROOT_PASSWORD: "{{ vault_mongo_root_password }}"
           MONGODB_REPLICA_SET_KEY: "{{ vault_mongo_auth_scram_key }}"
-          MONGODB_EXTRA_FLAGS: "{{ mongo_extra_args }}"
+          MONGODB_EXTRA_FLAGS: "{{ mongos_extra_args }}"
         ports:
           - 27017:27017
         healthcheck:
@@ -46,7 +46,7 @@
         name: pmm-client-mongos
         image: "{{ docker_registry_host }}/{{ pmm_client_image }}:{{ pmm_client_version }}"
         state: "{{ docker_container_remove | ternary('absent', docker_container_stopped | ternary('stopped', 'started'))  }}"
-        recreate: "{{ docker_container_force_recreate }}"
+        recreate: "{{ docker_container_force_recreate or pmm_agent_recreate }}"
         restart: "{{ docker_container_restart }}"
         restart_policy: "always"
         network_mode: "{{ docker_use_hosts_file | ternary('host', 'bridge') }}"
@@ -55,7 +55,7 @@
           PMM_AGENT_SETUP: "1"
           PMM_AGENT_SETUP_NODE_TYPE: "container"
           PMM_AGENT_SETUP_NODE_NAME: "{{ inventory_hostname }}"
-          PMM_AGENT_SETUP_CONTAINER_NAME: "mongos-{{ inventory_hostname }}"
+          PMM_AGENT_SETUP_CONTAINER_NAME: "{{ inventory_hostname }}-mongos"
           PMM_AGENT_SETUP_FORCE: "1"
           PMM_AGENT_SERVER_ADDRESS: "{{ groups['pmm_server'][0] }}:443"
           PMM_AGENT_SERVER_USERNAME: "{{ vault_pmm_server_user }}"
@@ -72,3 +72,4 @@
           - 42000:42000 # node exporter
           - 42001:42001 # mongodb exporter
       register: docker_pmmclient
+      when: pmm_agent_setup
