@@ -1,12 +1,11 @@
 - name: install pre-req for docker
   yum:
-    name: "{{ item }}"
+    name: 
+      - yum-utils
+      - device-mapper-persistent-data
+      - lvm2
     state: present
     update_cache: yes
-  with_items:
-    - yum-utils
-    - device-mapper-persistent-data
-    - lvm2
   become: yes
 
 - name: add docker repository (offline)
@@ -50,18 +49,19 @@
 
 - name: uninstall existing or old docker versions
   yum:
-    name: "{{ item }}"
+    name:
+      - docker
+      - docker-client
+      - docker-client-latest
+      - docker-common
+      - docker-latest
+      - docker-latest-logrotate
+      - docker-selinux
+      - docker-engine
+      - docker-engine-selinux
     state: absent
   with_items:
-    - docker
-    - docker-client
-    - docker-client-latest
-    - docker-common
-    - docker-latest
-    - docker-latest-logrotate
-    - docker-selinux
-    - docker-engine
-    - docker-engine-selinux
+
   become: yes
   tags:
     - docker
@@ -80,13 +80,12 @@
 
 - name: install docker-ce
   yum:
-    name: "{{ item }}"
+    name: 
+      - containerd.io-{{ docker_containerd_version }}
+      - docker-ce-{{ docker_version }}
+      - docker-ce-cli-{{ docker_version }}
     state: present
     update_cache: yes
-  with_items:
-    - "containerd.io-{{ docker_containerd_version }}"
-    - "docker-ce-{{ docker_version }}"
-    - "docker-ce-cli-{{ docker_version }}"
   notify: restart docker
   become: yes
 
