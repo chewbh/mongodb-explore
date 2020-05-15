@@ -68,14 +68,14 @@ mongos_extra_args: "--setParameter internalQueryExecMaxBlockingSortBytes=1342177
 mongod_extra_args: "--setParameter internalQueryExecMaxBlockingSortBytes=134217728 --profile 2 --slowms 200 --slowOpSampleRate 1"
 
 mongo_data:
-  use_docker_volume: no
+  use_docker_volume: yes
   docker_volume_name: "mongo_data"
 
   local_file_mount_volume_path: "/data"
   # configure file mount to use lvm for managing the storage mount point
   local_file_mount_lvm:
     # lvm volume group name
-    enabled: yes
+    enabled: no
     vg_name: vgmongodata
     lv_name: mongodata
     size: 45g
